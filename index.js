@@ -1,0 +1,347 @@
+require('dotenv').config();
+const cron = require('node-cron');
+const db = require('./src/db');
+const twitter = require('./src/twitter');
+const logger = require('./src/logger');
+
+// Parse command line arguments
+const args = process.argv.slice(2);
+const TEST_MODE = args.includes('--test');
+const TEST_ACCOUNT = 'OBEYGIANT'; // Default test account (Shepard Fairey's account)
+
+// Configuration
+const TWEETS_PER_ACCOUNT = 3;
+const INCLUDE_REPLIES = false;
+const INCLUDE_RETWEETS = false;
+const BASE_API_DELAY_MS = 10000; // Increased to 10 seconds between API calls
+const MAX_RETRY_ATTEMPTS = 3; // Maximum number of retry attempts for rate limit errors
+const BATCH_SIZE = TEST_MODE ? 1 : 5; // Use batch size of 1 in test mode
+const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 60; // Shorter interval in test mode
+const CRON_SCHEDULE = TEST_MODE ? '*/30 * * * *' : '0 */6 * * *'; // Every 30 minutes in test mode, every 6 hours in production
+
+// Function to process a single account
+async function processAccount(account, retryCount = 0) {
+  try {
+    logger.info(`Processing account: @${account.handle}`);
+    
+    // Fetch recent tweets for the account with retry handling
+    logger.info(`Fetching tweets for @${account.handle} with retry handling...`);
+    
+    let tweets = [];
+    let retryAttempt = 0;
+    const MAX_RETRIES = MAX_RETRY_ATTEMPTS;
+    
+    while (retryAttempt < MAX_RETRIES) {
+      try {
+        tweets = await twitter.fetchRecentTweets(
+          account.handle, 
+          TWEETS_PER_ACCOUNT,
+          INCLUDE_REPLIES,
+          INCLUDE_RETWEETS
+        );
+        
+        // If we got tweets, break out of the retry loop
+        if (tweets && tweets.length > 0) {
+          logger.info(`Successfully fetched ${tweets.length} tweets for @${account.handle}`);
+          break;
+        }
+        
+        // If no tweets were found but no error was thrown
+        if (retryAttempt === MAX_RETRIES - 1) {
+          logger.warn(`No tweets found for @${account.handle} after ${MAX_RETRIES} attempts`);
+        } else {
+          logger.warn(`No tweets found for @${account.handle}, retrying (${retryAttempt + 1}/${MAX_RETRIES})...`);
+          await twitter.delay(5000); // Wait 5 seconds before retrying
+        }
+        
+        retryAttempt++;
+      } catch (error) {
+        // If it's a rate limit error and we haven't exceeded max retries
+        if (error.code === 429 && retryAttempt < MAX_RETRIES - 1) {
+          logger.warn(`Rate limit hit for @${account.handle}, retrying after backoff...`);
+          
+          // Calculate wait time based on rate limit reset time
+          let waitTime = 60000; // Default: 1 minute
+          if (error.rateLimit && error.rateLimit.reset) {
+            const resetTime = error.rateLimit.reset * 1000; // Convert to milliseconds
+            const now = Date.now();
+            waitTime = Math.max(resetTime - now + 30000, 60000); // Wait until reset + 30 seconds, or at least 1 minute
+            
+            logger.rateLimitHit('Twitter API', new Date(resetTime).toISOString());
+          }
+          
+          // Wait using exponential backoff
+          await twitter.exponentialBackoff(retryAttempt, waitTime);
+          retryAttempt++;
+        } else {
+          // For other errors or if we've exceeded retries, rethrow
+          throw error;
+        }
+      }
+    }
+    
+    if (!tweets || tweets.length === 0) {
+      logger.warn(`No tweets found for @${account.handle} after all attempts`);
+      await db.updateLastChecked(account.id);
+      logger.accountScan(account.handle, false);
+      return;
+    }
+    
+    // Get existing cached tweets for this account
+    const cachedTweets = await db.getCachedTweets(account.id);
+    
+    // Check if tweets have changed
+    let tweetsChanged = true;
+    
+    if (cachedTweets.length === tweets.length) {
+      // Compare tweet IDs to see if they're the same
+      const cachedIds = new Set(cachedTweets.map(t => t.tweet_id));
+      const newIds = new Set(tweets.map(t => t.tweet_id));
+      
+      // Check if all new tweet IDs are already in the cache
+      tweetsChanged = false;
+      for (const id of newIds) {
+        if (!cachedIds.has(id)) {
+          tweetsChanged = true;
+          break;
+        }
+      }
+    }
+    
+    if (tweetsChanged) {
+      logger.info(`Tweets changed for @${account.handle}, updating cache...`);
+      
+      // Delete existing cached tweets for this account
+      await db.deleteCachedTweets(account.id);
+      
+      // Add account_id to each tweet
+      const tweetsWithAccountId = tweets.map(tweet => ({
+        ...tweet,
+        account_id: account.id
+      }));
+      
+      // Insert new tweets
+      await db.insertTweets(tweetsWithAccountId);
+      logger.info(`Cache updated for @${account.handle}`);
+    } else {
+      logger.info(`No changes in tweets for @${account.handle}`);
+    }
+    
+    // Update last_checked timestamp
+    await db.updateLastChecked(account.id);
+    logger.accountScan(account.handle, true, tweets.length);
+  } catch (error) {
+    // Handle rate limit errors with exponential backoff
+    if (error.code === 429 && retryCount < MAX_RETRY_ATTEMPTS) {
+      logger.warn(`Rate limit hit for @${account.handle}. Retry attempt ${retryCount + 1}/${MAX_RETRY_ATTEMPTS}`);
+      
+      // Calculate wait time based on rate limit reset time
+      let waitTime = 60000; // Default: 1 minute
+      if (error.rateLimit && error.rateLimit.reset) {
+        const resetTime = error.rateLimit.reset * 1000; // Convert to milliseconds
+        const now = Date.now();
+        waitTime = Math.max(resetTime - now + 30000, 60000); // Wait until reset + 30 seconds, or at least 1 minute
+        
+        logger.rateLimitHit('Twitter API', new Date(resetTime).toISOString());
+      }
+      
+      // Wait using exponential backoff
+      await twitter.exponentialBackoff(retryCount, waitTime);
+      
+      // Retry the account
+      return processAccount(account, retryCount + 1);
+    }
+    
+    logger.error(`Error processing account @${account.handle}:`, error);
+    logger.accountScan(account.handle, false);
+  }
+}
+
+// Function to calculate adaptive delay based on batch size and rate limits
+function calculateAdaptiveDelay(batchSize) {
+  // Twitter's rate limit is typically around 300 requests per 15 minutes (900 seconds)
+  // We make approximately 2 API calls per account (getUserId and userTimeline)
+  // So we can process about 150 accounts in 15 minutes
+  // To be safe, we'll aim for processing batchSize accounts in 30 minutes
+  
+  const safetyFactor = 2.0; // Double the time as a safety margin
+  const thirtyMinutesInMs = 30 * 60 * 1000;
+  const apiCallsPerAccount = 2; // getUserId and userTimeline
+  
+  // Calculate delay between accounts to spread them out over 30 minutes
+  const delayBetweenAccounts = (thirtyMinutesInMs / batchSize) * safetyFactor;
+  
+  // Use at least the base delay
+  return Math.max(delayBetweenAccounts, BASE_API_DELAY_MS);
+}
+
+// Function to process a batch of accounts
+async function processBatch(accounts, batchNumber, totalBatches) {
+  logger.info(`Processing batch ${batchNumber}/${totalBatches} with ${accounts.length} accounts...`);
+  
+  // Calculate adaptive delay based on batch size
+  const adaptiveDelay = calculateAdaptiveDelay(accounts.length);
+  logger.info(`Using adaptive delay of ${Math.round(adaptiveDelay / 1000)} seconds between accounts.`);
+  
+  // Process each account in the batch
+  for (let i = 0; i < accounts.length; i++) {
+    try {
+      await processAccount(accounts[i]);
+      
+      // Add delay between accounts to respect rate limits
+      if (i < accounts.length - 1) {
+        logger.debug(`Waiting ${Math.round(adaptiveDelay / 1000)} seconds before processing next account...`);
+        await twitter.delay(adaptiveDelay);
+      }
+    } catch (error) {
+      logger.error(`Error processing account ${accounts[i].handle} in batch:`, error);
+    }
+  }
+  
+  logger.info(`Completed batch ${batchNumber}/${totalBatches}.`);
+}
+
+// Function to run in test mode with a single account
+async function runTestMode() {
+  try {
+    logger.info('🧪 RUNNING IN TEST MODE 🧪');
+    logger.info(`Testing with single account: @${TEST_ACCOUNT}`);
+    
+    // Get the test account from the database
+    const { data, error } = await db.supabase
+      .from('x_accounts')
+      .select('*')
+      .eq('handle', TEST_ACCOUNT)
+      .single();
+    
+    if (error || !data) {
+      logger.error(`Test account @${TEST_ACCOUNT} not found in database. Please add it first.`);
+      logger.info(`You can add it by running: npm run parse-accounts`);
+      return;
+    }
+    
+    // Process the test account
+    logger.info('Starting test account processing...');
+    await processAccount(data);
+    logger.info('Test account processing completed.');
+    
+    // Display cached tweets for the test account
+    const cachedTweets = await db.getCachedTweets(data.id);
+    logger.info(`Found ${cachedTweets.length} cached tweets for @${TEST_ACCOUNT}:`);
+    
+    cachedTweets.forEach((tweet, index) => {
+      logger.info(`Tweet ${index + 1}:`);
+      logger.info(`ID: ${tweet.tweet_id}`);
+      logger.info(`Text: ${tweet.tweet_text}`);
+      logger.info(`URL: ${tweet.tweet_url}`);
+      logger.info(`Created: ${tweet.created_at}`);
+      logger.info(`Fetched: ${tweet.fetched_at}`);
+      logger.info('---');
+    });
+    
+    logger.info('Test mode completed successfully.');
+  } catch (error) {
+    logger.error('Error in test mode:', error);
+  }
+}
+
+// Main monitoring function
+async function monitorAccounts() {
+  try {
+    logger.heartbeat();
+    logger.info('Starting account monitoring process...');
+    
+    // If in test mode, run the test mode function
+    if (TEST_MODE) {
+      await runTestMode();
+      return;
+    }
+    
+    // Get all accounts to monitor
+    const accounts = await db.getAccountsToMonitor();
+    
+    if (!accounts || accounts.length === 0) {
+      logger.warn('No accounts found to monitor.');
+      return;
+    }
+    
+    logger.info(`Found ${accounts.length} accounts to monitor.`);
+    
+    // Split accounts into batches
+    const batches = [];
+    for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
+      batches.push(accounts.slice(i, i + BATCH_SIZE));
+    }
+    
+    logger.info(`Split accounts into ${batches.length} batches of up to ${BATCH_SIZE} accounts each.`);
+    
+    // Process first batch immediately
+    await processBatch(batches[0], 1, batches.length);
+    
+    // Schedule remaining batches with delays between them
+    for (let i = 1; i < batches.length; i++) {
+      const batchDelay = BATCH_INTERVAL_MINUTES * 60 * 1000 * i;
+      logger.info(`Scheduling batch ${i + 1}/${batches.length} to run in ${BATCH_INTERVAL_MINUTES * i} minutes...`);
+      
+      setTimeout(async () => {
+        await processBatch(batches[i], i + 1, batches.length);
+      }, batchDelay);
+    }
+    
+    logger.info('Account monitoring process initiated. Batches will run at scheduled intervals.');
+  } catch (error) {
+    logger.error('Error in monitorAccounts:', error);
+  }
+}
+
+// Initialize and start the monitoring process
+async function init() {
+  try {
+    if (TEST_MODE) {
+      logger.info('Initializing Account Monitoring Agent in TEST MODE...');
+    } else {
+      logger.info('Initializing Account Monitoring Agent...');
+    }
+    
+    // Initialize database
+    const dbInitialized = await db.initializeDatabase();
+    if (!dbInitialized) {
+      logger.error('Failed to initialize database. Exiting...');
+      process.exit(1);
+    }
+    
+    // Schedule the monitoring job
+    cron.schedule(CRON_SCHEDULE, async () => {
+      logger.info(`Running scheduled job (${CRON_SCHEDULE})...`);
+      await monitorAccounts();
+    });
+    
+    logger.info(`Monitoring job scheduled: ${CRON_SCHEDULE}`);
+    
+    // Run the monitoring process immediately on startup
+    logger.info('Running initial monitoring process...');
+    await monitorAccounts();
+    
+    logger.info('Account Monitoring Agent initialized successfully.');
+  } catch (error) {
+    logger.error('Error initializing Account Monitoring Agent:', error);
+    process.exit(1);
+  }
+}
+
+// Handle process termination
+process.on('SIGINT', () => {
+  logger.info('Received SIGINT. Shutting down...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  logger.info('Received SIGTERM. Shutting down...');
+  process.exit(0);
+});
+
+// Start the application
+init().catch(error => {
+  logger.error('Unhandled error in initialization:', error);
+  process.exit(1);
+});

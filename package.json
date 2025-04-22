@@ -1,0 +1,33 @@
+{
+  "name": "marvin-account-monitor",
+  "version": "1.0.0",
+  "description": "Monitor X accounts and keep a rotating cache of their 3 most recent tweets in Supabase",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "start:test": "node index.js --test",
+    "setup": "node setup.js",
+    "parse-accounts": "node scripts/parse-accounts.js",
+    "add-test-account": "node scripts/add-test-account.js",
+    "run-single-test": "node scripts/run-single-test.js",
+    "check-limits": "node scripts/check-rate-limits.js",
+    "test-parse": "node scripts/test-parse-accounts.js",
+    "test-db": "node scripts/test-db-connection.js",
+    "test-twitter": "node scripts/test-twitter-api.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "twitter",
+    "x",
+    "monitoring",
+    "supabase"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3",
+    "twitter-api-v2": "^1.15.1"
+  }
+}
