@@ -1,0 +1,9 @@
+version: '3'
+services:
+  marvin-account-monitor:
+    build: .
+    restart: always
+    volumes:
+      - ./cache:/app/cache
+    env_file:
+      - .env

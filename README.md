@@ -189,3 +189,27 @@ The application uses a simple logging system with four levels:
 - ERROR: Errors that may cause issues
 
 You can change the log level by modifying the `currentLogLevel` in `src/logger.js`.
+
+## Docker Deployment
+
+This application can be deployed using Docker. See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions on how to deploy to a server.
+
+### Quick Docker Start
+
+1. Build and run with Docker Compose:
+
+```bash
+docker-compose up -d
+```
+
+2. View logs:
+
+```bash
+docker-compose logs -f
+```
+
+3. Stop the container:
+
+```bash
+docker-compose down
+```
