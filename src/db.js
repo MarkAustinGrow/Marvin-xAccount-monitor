@@ -202,6 +202,40 @@ async function updateAccountReviewStatus(id, status, notes) {
   }
 }
 
+// Function to get all accounts with their cached tweets
+async function getAllAccountsWithTweets() {
+  try {
+    // First, get all accounts
+    const { data: accounts, error: accountsError } = await supabase
+      .from('x_accounts')
+      .select('*')
+      .order('priority', { ascending: true });
+    
+    if (accountsError) {
+      console.error('Error fetching accounts:', accountsError);
+      return [];
+    }
+    
+    if (!accounts || accounts.length === 0) {
+      return [];
+    }
+    
+    // For each account, get its tweets
+    const accountsWithTweets = await Promise.all(accounts.map(async (account) => {
+      const tweets = await getCachedTweets(account.id);
+      return {
+        ...account,
+        tweets
+      };
+    }));
+    
+    return accountsWithTweets;
+  } catch (error) {
+    console.error('Error in getAllAccountsWithTweets:', error);
+    return [];
+  }
+}
+
 module.exports = {
   supabase,
   initializeDatabase,
@@ -212,5 +246,6 @@ module.exports = {
   insertTweets,
   addAccountToReview,
   getAccountsToReview,
-  updateAccountReviewStatus
+  updateAccountReviewStatus,
+  getAllAccountsWithTweets
 };

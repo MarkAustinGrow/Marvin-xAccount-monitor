@@ -37,10 +37,29 @@ app.get('/', async (req, res) => {
     res.render('index', { 
       accountsToReview,
       allAccounts,
-      title: 'Marvin Account Monitor'
+      title: 'Marvin Account Monitor - Account Review',
+      page: 'review'
     });
   } catch (error) {
     console.error('Error rendering home page:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Route for tweet cache page
+app.get('/tweets', async (req, res) => {
+  try {
+    // Get all accounts with their tweets
+    const accountsWithTweets = await db.getAllAccountsWithTweets();
+    
+    // Render the tweets page
+    res.render('tweets', { 
+      accountsWithTweets,
+      title: 'Marvin Account Monitor - Tweet Cache',
+      page: 'tweets'
+    });
+  } catch (error) {
+    console.error('Error rendering tweets page:', error);
     res.status(500).send('Internal Server Error');
   }
 });

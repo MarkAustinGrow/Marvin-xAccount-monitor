@@ -1,91 +1,88 @@
-🧠 Account Monitoring Agent – Step-by-Step Guide
-1. Define the Agent’s Purpose
-Monitor a curated list of X accounts and keep a rotating cache of their 3 most recent tweets in Supabase.
+# 🧠 Account Monitoring Agent – Roadmap & Progress
 
-2. Set Up the Database
-You need two core tables:
+## Core Functionality
 
-x_accounts
-Stores the accounts you're monitoring.
+### 1. ✅ Define the Agent's Purpose
+- ✅ Monitor a curated list of X accounts and keep a rotating cache of their 3 most recent tweets in Supabase.
 
-Fields to include: id, handle, platform, priority, last_checked.
+### 2. ✅ Set Up the Database
+- ✅ Create x_accounts table (id, handle, platform, priority, last_checked)
+- ✅ Create tweets_cache table (id, account_id, tweet_id, tweet_text, tweet_url, created_at, fetched_at)
+- ✅ Add appropriate indexes for performance
 
-tweets_cache
-Stores the last 3 tweets for each person.
+### 3. ✅ Build the Account List
+- ✅ Populate the x_accounts table with X usernames
+- ✅ Implement priority levels for accounts
+- ✅ Set platform identifier
+- ✅ Initialize last_checked timestamps
 
-Fields: id, person_id, tweet_id, tweet_text, tweet_url, created_at, fetched_at.
+### 4. ✅ Schedule the Agent
+- ✅ Implement cron-based scheduling (every 6 hours by default)
+- ✅ Create configurable schedule via environment variables
 
-3. Build the Account List
-Populate the x_accounts table with:
+### 5. ✅ Fetch Data from X
+- ✅ Implement Twitter API integration
+- ✅ Retrieve recent tweets for each account
+- ✅ Add options to include/exclude replies and retweets
+- ✅ Sort by created_at timestamp
 
-X usernames (handle)
+### 6. ✅ Compare with Existing Cached Tweets
+- ✅ Look up existing entries in tweets_cache
+- ✅ Compare tweet IDs to detect changes
+- ✅ Update last_checked when unchanged
+- ✅ Replace tweets when changed
 
-Priority level (e.g. 1 for high-engagement accounts)
+### 7. ✅ Save to Supabase
+- ✅ Insert new tweet data into tweets_cache
+- ✅ Update timestamps appropriately
+- ✅ Update last_checked in x_accounts table
 
-Platform (x)
+### 8. ✅ Handle API/Rate Limits
+- ✅ Implement batch processing (2 accounts per batch)
+- ✅ Add adaptive delays between API calls
+- ✅ Implement exponential backoff for rate limit handling
+- ✅ Optimize batch intervals (16 minutes) to align with Twitter's rate limit cycles
+- ✅ Prioritize accounts based on priority field
 
-Last checked time (can be null initially)
+### 9. ✅ Logging & Monitoring
+- ✅ Implement comprehensive logging system
+- ✅ Log account scan successes and failures
+- ✅ Track rate limit hits with reset times
+- ✅ Implement agent heartbeat for observability
 
-4. Schedule the Agent
-Determine how frequently it runs:
+### 10. ✅ Test the Flow End-to-End
+- ✅ Create test mode for development
+- ✅ Implement single account testing
+- ✅ Verify tweet storage and rotation
+- ✅ Confirm last_checked updates correctly
 
-e.g. Every 2 hours
+## Enhanced Features
 
-Use a cron job, Supabase Edge Function schedule, or serverless platform like Vercel/Cron, or a background queue
+### 11. ✅ Account Review System
+- ✅ Create accounts_to_review table
+- ✅ Implement detection for validation errors
+- ✅ Add detection for accounts with zero tweets
+- ✅ Create status tracking (pending, fixed, ignored)
 
-5. Fetch Data from X
-For each account:
+### 12. ✅ Web Interface
+- ✅ Build web dashboard for account review
+- ✅ Implement filtering by status
+- ✅ Add secure authentication
+- ✅ Create notes system for team communication
 
-Call the X API (or scrape as backup) to retrieve the 3 most recent tweets
+### 13. ✅ Deployment & Operations
+- ✅ Containerize with Docker
+- ✅ Create deployment documentation
+- ✅ Implement deployment scripts
+- ✅ Add environment configuration examples
 
-Sort by created_at, discard retweets/replies if desired
+### 14. ✅ User ID Caching
+- ✅ Implement caching layer to reduce API calls
+- ✅ Create persistent cache storage
+- ✅ Add cache management functions
 
-6. Compare with Existing Cached Tweets
-Look up existing entries in tweets_cache for this person_id
-
-Check if tweet IDs match
-
-If unchanged: update last_checked only
-
-If different: delete old tweets → insert new ones
-
-7. Save to Supabase
-Insert new tweet data into tweets_cache
-
-Update fetched_at and created_at timestamps
-
-Update last_checked in x_accounts table
-
-8. Handle API/Rate Limits
-Add pause or delay between requests
-
-Optionally prioritize based on the priority field in x_accounts
-
-9. Logging & Monitoring
-Log each account scan (success or fail)
-
-Track rate limit hits, errors, or downtime
-
-Optionally log agent heartbeat for observability
-
-10. Test the Flow End-to-End
-Run on a small batch of accounts
-
-Check if:
-
-Only 3 tweets are stored
-
-Old tweets are removed correctly
-
-No duplication
-
-last_checked updates
-
-11. Optional Enhancements (For Later)
-Tag tweets with categories, sentiment, or keywords
-
-Track engagement attempts from other agents
-
-Add caching layer to reduce API calls
-
-Build dashboard to view tweet cache + agent logs
+### 15. 🔄 Future Enhancements (In Progress)
+- ⬜ Tag tweets with categories or keywords
+- ⬜ Implement sentiment analysis
+- ⬜ Track engagement metrics
+- ⬜ Expand to additional platforms
