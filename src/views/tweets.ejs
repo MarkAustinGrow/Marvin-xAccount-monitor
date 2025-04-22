@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= title %></title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
   <link href="/style.css" rel="stylesheet">
 </head>
 <body>
@@ -81,10 +82,73 @@
                                     <%= new Date(tweet.created_at).toLocaleString() %>
                                   </small>
                                 </div>
+                                
+                                <!-- Tweet summary if available -->
+                                <% if (tweet.summary) { %>
+                                  <div class="alert alert-light p-1 mb-2">
+                                    <strong>Summary:</strong> <%= tweet.summary %>
+                                  </div>
+                                <% } %>
+                                
                                 <p class="mb-1"><%= tweet.tweet_text %></p>
+                                
+                                <!-- Engagement metrics if available -->
+                                <% if (tweet.engagement_score !== undefined) { %>
+                                  <div class="mb-2 mt-2">
+                                    <div class="progress" style="height: 5px;">
+                                      <div class="progress-bar bg-info" role="progressbar" 
+                                        style="width: <%= Math.min(100, tweet.engagement_score) %>%;" 
+                                        aria-valuenow="<%= tweet.engagement_score %>" 
+                                        aria-valuemin="0" 
+                                        aria-valuemax="100">
+                                      </div>
+                                    </div>
+                                    <div class="d-flex justify-content-between align-items-center mt-1">
+                                      <small class="text-muted">Engagement Score: <%= tweet.engagement_score.toFixed(1) %></small>
+                                      
+                                      <% if (tweet.public_metrics) { %>
+                                        <% try { %>
+                                          <% const metrics = JSON.parse(tweet.public_metrics); %>
+                                          <div>
+                                            <span class="badge bg-primary" title="Likes">
+                                              <i class="bi bi-heart-fill"></i> <%= metrics.like_count || 0 %>
+                                            </span>
+                                            <span class="badge bg-success" title="Retweets">
+                                              <i class="bi bi-arrow-repeat"></i> <%= metrics.retweet_count || 0 %>
+                                            </span>
+                                            <span class="badge bg-info" title="Replies">
+                                              <i class="bi bi-chat-fill"></i> <%= metrics.reply_count || 0 %>
+                                            </span>
+                                            <span class="badge bg-warning" title="Quotes">
+                                              <i class="bi bi-quote"></i> <%= metrics.quote_count || 0 %>
+                                            </span>
+                                          </div>
+                                        <% } catch (e) { /* Handle parsing error */ } %>
+                                      <% } %>
+                                    </div>
+                                  </div>
+                                <% } %>
+                                
+                                <!-- Vibe tags if available -->
+                                <% if (tweet.vibe_tags) { %>
+                                  <% try { %>
+                                    <% const tags = JSON.parse(tweet.vibe_tags); %>
+                                    <% if (tags && tags.length > 0) { %>
+                                      <div class="mb-2">
+                                        <% tags.forEach(tag => { %>
+                                          <span class="badge bg-secondary me-1">#<%= tag %></span>
+                                        <% }); %>
+                                      </div>
+                                    <% } %>
+                                  <% } catch (e) { /* Handle parsing error */ } %>
+                                <% } %>
+                                
                                 <div class="d-flex justify-content-between align-items-center">
                                   <small class="text-muted">
                                     Fetched: <%= new Date(tweet.fetched_at).toLocaleString() %>
+                                    <% if (tweet.processed_at) { %>
+                                      | Processed: <%= new Date(tweet.processed_at).toLocaleString() %>
+                                    <% } %>
                                   </small>
                                   <a href="<%= tweet.tweet_url %>" target="_blank" class="btn btn-sm btn-outline-primary">
                                     View on X

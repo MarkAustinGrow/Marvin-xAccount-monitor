@@ -82,7 +82,7 @@
 - ✅ Add cache management functions
 
 ### 15. 🔄 Future Enhancements (In Progress)
-- ⬜ Tag tweets with categories or keywords
+- ✅ Track engagement metrics
+- ✅ Tag tweets with categories or keywords (via hashtags)
 - ⬜ Implement sentiment analysis
-- ⬜ Track engagement metrics
 - ⬜ Expand to additional platforms

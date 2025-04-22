@@ -124,10 +124,19 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
       return [];
     }
     
-    // Fetch tweets for the user
+    // Fetch tweets for the user with engagement metrics
     const tweets = await readOnlyClient.v2.userTimeline(userId, {
       max_results: 10, // Fetch more than needed to filter out replies/retweets if necessary
-      'tweet.fields': ['created_at', 'text', 'id', 'referenced_tweets'],
+      'tweet.fields': [
+        'created_at', 
+        'text', 
+        'id', 
+        'referenced_tweets',
+        'public_metrics', // Includes retweet_count, reply_count, like_count, quote_count
+        'context_annotations', // For topic categorization
+        'entities', // Hashtags, mentions, URLs
+        'lang' // Language of the tweet
+      ],
       exclude: includeReplies ? [] : ['replies'],
     });
     
@@ -203,14 +212,49 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
       return [];
     }
     
-    // Format the tweets for storage
-    const formattedTweets = limitedTweets.map(tweet => ({
-      tweet_id: tweet.id,
-      tweet_text: tweet.text,
-      tweet_url: `https://twitter.com/${handle}/status/${tweet.id}`,
-      created_at: new Date(tweet.created_at).toISOString(),
-      fetched_at: new Date().toISOString()
-    }));
+    // Format the tweets for storage with engagement metrics
+    const formattedTweets = limitedTweets.map(tweet => {
+      // Calculate engagement score
+      const publicMetrics = tweet.public_metrics || {};
+      const retweetCount = publicMetrics.retweet_count || 0;
+      const replyCount = publicMetrics.reply_count || 0;
+      const likeCount = publicMetrics.like_count || 0;
+      const quoteCount = publicMetrics.quote_count || 0;
+      
+      // Weighted engagement score formula
+      // Weights: Retweets (1.5), Quotes (1.2), Replies (1.0), Likes (0.8)
+      const engagementScore = (
+        (retweetCount * 1.5) + 
+        (quoteCount * 1.2) + 
+        (replyCount * 1.0) + 
+        (likeCount * 0.8)
+      );
+      
+      // Extract hashtags for vibe tags
+      const hashtags = tweet.entities?.hashtags?.map(tag => tag.tag) || [];
+      
+      // Generate a simple summary (first 50 chars + "...")
+      const summary = tweet.text.length > 50 
+        ? `${tweet.text.substring(0, 50)}...` 
+        : tweet.text;
+      
+      return {
+        tweet_id: tweet.id,
+        tweet_text: tweet.text,
+        tweet_url: `https://twitter.com/${handle}/status/${tweet.id}`,
+        created_at: new Date(tweet.created_at).toISOString(),
+        fetched_at: new Date().toISOString(),
+        
+        // New engagement fields
+        engagement_score: engagementScore,
+        summary: summary,
+        vibe_tags: JSON.stringify(hashtags), // Store as JSON string until we implement proper tagging
+        processed_at: new Date().toISOString(),
+        
+        // Store raw metrics for reference
+        public_metrics: JSON.stringify(publicMetrics)
+      };
+    });
     
     console.log(`Fetched ${formattedTweets.length} tweets for @${handle}.`);
     return formattedTweets;
