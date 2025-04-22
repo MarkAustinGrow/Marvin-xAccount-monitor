@@ -197,6 +197,12 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
     // Take only the requested number of tweets
     const limitedTweets = filteredTweets.slice(0, count);
     
+    // Check if we found any tweets after filtering
+    if (limitedTweets.length === 0) {
+      console.log(`No tweets found for @${handle} after filtering.`);
+      return [];
+    }
+    
     // Format the tweets for storage
     const formattedTweets = limitedTweets.map(tweet => ({
       tweet_id: tweet.id,

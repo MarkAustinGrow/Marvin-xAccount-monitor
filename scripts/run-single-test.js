@@ -102,6 +102,14 @@ async function processTestAccount() {
     
     if (!tweets || tweets.length === 0) {
       logger.warn(`No tweets found for @${account.handle} after all attempts`);
+      
+      // Add to review list if we consistently get 0 tweets
+      await db.addAccountToReview(
+        account.handle, 
+        "Account consistently returns 0 tweets despite successful API calls", 
+        "NO_TWEETS"
+      );
+      
       await db.updateLastChecked(account.id);
       logger.accountScan(account.handle, false);
       return;

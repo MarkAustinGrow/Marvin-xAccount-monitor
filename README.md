@@ -151,8 +151,8 @@ You can modify the following constants in `index.js` to adjust the behavior:
 - `INCLUDE_RETWEETS`: Whether to include retweets (default: false)
 - `BASE_API_DELAY_MS`: Minimum delay between API calls in milliseconds (default: 10000)
 - `MAX_RETRY_ATTEMPTS`: Maximum number of retry attempts for rate limit errors (default: 3)
-- `BATCH_SIZE`: Number of accounts to process in each batch (default: 5)
-- `BATCH_INTERVAL_MINUTES`: Time between processing batches in minutes (default: 60)
+- `BATCH_SIZE`: Number of accounts to process in each batch (default: 2)
+- `BATCH_INTERVAL_MINUTES`: Time between processing batches in minutes (default: 16)
 - `CRON_SCHEDULE`: Schedule for the monitoring job (default: '0 */6 * * *' - every 6 hours)
 
 ## Rate Limit Handling

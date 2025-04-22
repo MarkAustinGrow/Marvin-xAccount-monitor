@@ -16,8 +16,8 @@ const INCLUDE_REPLIES = false;
 const INCLUDE_RETWEETS = false;
 const BASE_API_DELAY_MS = 10000; // Increased to 10 seconds between API calls
 const MAX_RETRY_ATTEMPTS = 3; // Maximum number of retry attempts for rate limit errors
-const BATCH_SIZE = TEST_MODE ? 1 : 5; // Use batch size of 1 in test mode
-const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 60; // Shorter interval in test mode
+const BATCH_SIZE = TEST_MODE ? 1 : 2; // Use batch size of 1 in test mode, 2 in production
+const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 16; // Shorter interval in test mode, 16 minutes in production (just over Twitter's 15-minute rate limit reset)
 const CRON_SCHEDULE = TEST_MODE ? '*/30 * * * *' : '0 */6 * * *'; // Every 30 minutes in test mode, every 6 hours in production
 
 // Function to process a single account
@@ -98,6 +98,14 @@ async function processAccount(account, retryCount = 0) {
     
     if (!tweets || tweets.length === 0) {
       logger.warn(`No tweets found for @${account.handle} after all attempts`);
+      
+      // Add to review list if we consistently get 0 tweets
+      await db.addAccountToReview(
+        account.handle, 
+        "Account consistently returns 0 tweets despite successful API calls", 
+        "NO_TWEETS"
+      );
+      
       await db.updateLastChecked(account.id);
       logger.accountScan(account.handle, false);
       return;
