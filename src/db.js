@@ -129,6 +129,79 @@ async function insertTweets(tweets) {
   }
 }
 
+// Function to add an account to the review list
+async function addAccountToReview(handle, errorMessage, errorCode) {
+  try {
+    const { data, error } = await supabase
+      .from('accounts_to_review')
+      .upsert({
+        handle,
+        error_message: errorMessage,
+        error_code: errorCode,
+        created_at: new Date().toISOString(),
+        status: 'pending'
+      }, {
+        onConflict: 'handle',
+        ignoreDuplicates: false
+      });
+    
+    if (error) {
+      console.error(`Error adding account ${handle} to review:`, error);
+      return false;
+    }
+    
+    console.log(`Added account ${handle} to review list.`);
+    return true;
+  } catch (error) {
+    console.error('Error in addAccountToReview:', error);
+    return false;
+  }
+}
+
+// Function to get all accounts to review
+async function getAccountsToReview() {
+  try {
+    const { data, error } = await supabase
+      .from('accounts_to_review')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching accounts to review:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getAccountsToReview:', error);
+    return [];
+  }
+}
+
+// Function to update the status of an account to review
+async function updateAccountReviewStatus(id, status, notes) {
+  try {
+    const { error } = await supabase
+      .from('accounts_to_review')
+      .update({ 
+        status, 
+        notes,
+        updated_at: new Date().toISOString() 
+      })
+      .eq('id', id);
+    
+    if (error) {
+      console.error(`Error updating status for account review ${id}:`, error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in updateAccountReviewStatus:', error);
+    return false;
+  }
+}
+
 module.exports = {
   supabase,
   initializeDatabase,
@@ -136,5 +209,8 @@ module.exports = {
   updateLastChecked,
   getCachedTweets,
   deleteCachedTweets,
-  insertTweets
+  insertTweets,
+  addAccountToReview,
+  getAccountsToReview,
+  updateAccountReviewStatus
 };

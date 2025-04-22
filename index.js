@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const db = require('./src/db');
 const twitter = require('./src/twitter');
 const logger = require('./src/logger');
+const webServer = require('./src/web-server');
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -37,7 +38,8 @@ async function processAccount(account, retryCount = 0) {
           account.handle, 
           TWEETS_PER_ACCOUNT,
           INCLUDE_REPLIES,
-          INCLUDE_RETWEETS
+          INCLUDE_RETWEETS,
+          db
         );
         
         // If we got tweets, break out of the retry loop
@@ -56,8 +58,22 @@ async function processAccount(account, retryCount = 0) {
         
         retryAttempt++;
       } catch (error) {
+        // Handle validation errors (username format/length)
+        if (error.code === 'VALIDATION_ERROR') {
+          logger.warn(`Validation error for @${account.handle}: ${error.message}`);
+          
+          // Add to review list
+          await db.addAccountToReview(account.handle, error.message, 'VALIDATION_ERROR');
+          
+          // Update last_checked to avoid constant retries
+          await db.updateLastChecked(account.id);
+          logger.accountScan(account.handle, false);
+          
+          // Skip this account
+          return;
+        }
         // If it's a rate limit error and we haven't exceeded max retries
-        if (error.code === 429 && retryAttempt < MAX_RETRIES - 1) {
+        else if (error.code === 429 && retryAttempt < MAX_RETRIES - 1) {
           logger.warn(`Rate limit hit for @${account.handle}, retrying after backoff...`);
           
           // Calculate wait time based on rate limit reset time
@@ -308,6 +324,16 @@ async function init() {
     if (!dbInitialized) {
       logger.error('Failed to initialize database. Exiting...');
       process.exit(1);
+    }
+    
+    // Start the web server
+    logger.info('Starting web server...');
+    try {
+      const server = await webServer.startServer();
+      logger.info(`Web server started on port ${process.env.WEB_PORT || 3000}`);
+    } catch (error) {
+      logger.error('Failed to start web server:', error);
+      // Continue even if web server fails to start
     }
     
     // Schedule the monitoring job

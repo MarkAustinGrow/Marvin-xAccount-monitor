@@ -50,7 +50,7 @@ function saveUserIdCache() {
 loadUserIdCache();
 
 // Function to get user ID from handle (with caching)
-async function getUserId(handle) {
+async function getUserId(handle, db) {
   // Check cache first
   if (userIdCache.has(handle)) {
     return userIdCache.get(handle);
@@ -84,17 +84,41 @@ async function getUserId(handle) {
       throw error; // Let the caller handle rate limits
     }
     
+    // Handle validation errors (username format/length)
+    if (error.code === 400 && 
+        error.errors && 
+        error.errors.some(e => e.message && e.message.includes('username') && e.message.includes('does not match'))) {
+      
+      // Extract the specific error message
+      const validationError = error.errors.find(e => e.message && e.message.includes('username'));
+      const errorMessage = validationError ? validationError.message : 'Username validation error';
+      
+      console.error(`Validation error for @${handle}: ${errorMessage}`);
+      
+      // Add to review list if db is provided
+      if (db) {
+        await db.addAccountToReview(handle, errorMessage, '400');
+      }
+      
+      // Return special error code to indicate validation error
+      throw {
+        code: 'VALIDATION_ERROR',
+        originalError: error,
+        message: errorMessage
+      };
+    }
+    
     return null;
   }
 }
 
 // Function to fetch recent tweets for a user
-async function fetchRecentTweets(handle, count = 3, includeReplies = false, includeRetweets = false) {
+async function fetchRecentTweets(handle, count = 3, includeReplies = false, includeRetweets = false, db = null) {
   try {
     console.log(`Fetching recent tweets for @${handle}...`);
     
     // Get user ID (from cache if possible)
-    const userId = await getUserId(handle);
+    const userId = await getUserId(handle, db);
     
     if (!userId) {
       return [];

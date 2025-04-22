@@ -119,6 +119,26 @@ Follow the prompts to complete the SSL setup.
 
 Visit https://xaccounts.marvn.club to verify that the application is running correctly.
 
+### 9. Access the Web Interface
+
+The application includes a web interface for reviewing accounts that have validation errors. You can access it at:
+
+```
+https://xaccounts.marvn.club/
+```
+
+The web interface is protected with basic authentication. The default credentials are:
+- Username: admin
+- Password: password
+
+You can change these credentials by setting the `WEB_USERNAME` and `WEB_PASSWORD` environment variables in your `.env` file.
+
+The web interface allows you to:
+- View accounts that need review due to validation errors
+- Mark accounts as fixed or ignored
+- Add notes to accounts
+- Filter accounts by status
+
 ## Maintenance
 
 ### Viewing logs

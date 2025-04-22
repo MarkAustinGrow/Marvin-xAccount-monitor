@@ -44,7 +44,8 @@ async function processTestAccount() {
           account.handle, 
           TWEETS_PER_ACCOUNT,
           INCLUDE_REPLIES,
-          INCLUDE_RETWEETS
+          INCLUDE_RETWEETS,
+          db
         );
         
         // If we got tweets, break out of the retry loop
@@ -63,8 +64,22 @@ async function processTestAccount() {
         
         retryCount++;
       } catch (error) {
+        // Handle validation errors (username format/length)
+        if (error.code === 'VALIDATION_ERROR') {
+          logger.warn(`Validation error for @${account.handle}: ${error.message}`);
+          
+          // Add to review list
+          await db.addAccountToReview(account.handle, error.message, 'VALIDATION_ERROR');
+          
+          // Update last_checked to avoid constant retries
+          await db.updateLastChecked(account.id);
+          logger.accountScan(account.handle, false);
+          
+          // Skip this account
+          return;
+        }
         // If it's a rate limit error and we haven't exceeded max retries
-        if (error.code === 429 && retryCount < MAX_RETRIES - 1) {
+        else if (error.code === 429 && retryCount < MAX_RETRIES - 1) {
           logger.warn(`Rate limit hit for @${account.handle}, retrying after backoff...`);
           
           // Calculate wait time based on rate limit reset time

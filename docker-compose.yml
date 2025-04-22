@@ -3,6 +3,8 @@ services:
   marvin-account-monitor:
     build: .
     restart: always
+    ports:
+      - "${WEB_PORT:-3000}:${WEB_PORT:-3000}"
     volumes:
       - ./cache:/app/cache
     env_file:

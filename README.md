@@ -190,6 +190,40 @@ The application uses a simple logging system with four levels:
 
 You can change the log level by modifying the `currentLogLevel` in `src/logger.js`.
 
+## Account Review System
+
+The application includes a system for handling accounts that have validation errors (such as usernames that exceed Twitter's 15-character limit).
+
+### Command Line Interface
+
+You can view accounts that need review from the command line:
+
+```
+npm run view-reviews
+```
+
+This will display a list of accounts that need review, grouped by status (pending, fixed, ignored).
+
+### Web Interface
+
+The application also includes a web interface for reviewing accounts. You can access it at:
+
+```
+http://localhost:3000/
+```
+
+The web interface is protected with basic authentication. The default credentials are:
+- Username: admin
+- Password: password
+
+You can change these credentials by setting the `WEB_USERNAME` and `WEB_PASSWORD` environment variables in your `.env` file.
+
+The web interface allows you to:
+- View accounts that need review due to validation errors
+- Mark accounts as fixed or ignored
+- Add notes to accounts
+- Filter accounts by status
+
 ## Docker Deployment
 
 This application can be deployed using Docker. See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions on how to deploy to a server.
