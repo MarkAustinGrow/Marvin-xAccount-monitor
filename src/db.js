@@ -25,10 +25,13 @@ async function initializeDatabase() {
 // Function to get all accounts to monitor
 async function getAccountsToMonitor() {
   try {
+    // Order by last_checked first (oldest first), then by priority
+    // This ensures all accounts eventually get processed, not just the high priority ones
     const { data, error } = await supabase
       .from('x_accounts')
       .select('*')
-      .order('priority', { ascending: true });
+      .order('last_checked', { ascending: true }) // Process accounts that haven't been checked for the longest time first
+      .order('priority', { ascending: true });    // Then consider priority as a secondary factor
     
     if (error) {
       console.error('Error fetching accounts:', error);
@@ -206,10 +209,12 @@ async function updateAccountReviewStatus(id, status, notes) {
 async function getAllAccountsWithTweets() {
   try {
     // First, get all accounts
+    // Use the same ordering as getAccountsToMonitor for consistency
     const { data: accounts, error: accountsError } = await supabase
       .from('x_accounts')
       .select('*')
-      .order('priority', { ascending: true });
+      .order('last_checked', { ascending: true }) // Order by last checked time first
+      .order('priority', { ascending: true });    // Then by priority
     
     if (accountsError) {
       console.error('Error fetching accounts:', accountsError);
