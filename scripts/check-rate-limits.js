@@ -1,95 +1,94 @@
 require('dotenv').config();
-const { TwitterApi } = require('twitter-api-v2');
+const twitter = require('../src/twitter');
+const logger = require('../src/logger');
 
-// Initialize Twitter client with bearer token for read-only access
-const twitterClient = new TwitterApi(process.env.TWITTER_BEARER_TOKEN);
-const readOnlyClient = twitterClient.readOnly;
+// Set logger to debug level for more detailed output
+logger.setLogLevel('DEBUG');
 
 // Function to check rate limits for specific endpoints
 async function checkRateLimits() {
   try {
     console.log('Checking Twitter API rate limits...');
     
-    // Make a test request to get rate limit headers
-    const testUserLookup = await readOnlyClient.v2.userByUsername('twitter')
-      .catch(error => {
-        // Even if the request fails due to rate limits, we'll still get the headers
-        return error;
-      });
+    // Use the new checkRateLimits function from twitter.js
+    const result = await twitter.checkRateLimits();
     
-    // Extract rate limit info from headers
-    const userLookupHeaders = testUserLookup.rateLimit || 
-                             (testUserLookup._headers ? {
-                               limit: parseInt(testUserLookup._headers['x-rate-limit-limit'] || '0'),
-                               remaining: parseInt(testUserLookup._headers['x-rate-limit-remaining'] || '0'),
-                               reset: parseInt(testUserLookup._headers['x-rate-limit-reset'] || '0')
-                             } : null);
+    if (!result.success) {
+      console.error('Error checking rate limits:', result.error);
+      return;
+    }
     
-    // Make a test request to get user timeline rate limit headers
-    // First get a user ID
-    const userId = testUserLookup.data?.id || '12';  // Twitter's official account ID as fallback
+    const rateLimitInfo = result.rateLimitInfo;
     
-    const testUserTimeline = await readOnlyClient.v2.userTimeline(userId, { max_results: 5 })
-      .catch(error => {
-        // Even if the request fails due to rate limits, we'll still get the headers
-        return error;
-      });
+    if (!rateLimitInfo) {
+      console.error('No rate limit information available');
+      return;
+    }
     
-    // Extract rate limit info from headers
-    const userTimelineHeaders = testUserTimeline.rateLimit || 
-                               (testUserTimeline._headers ? {
-                                 limit: parseInt(testUserTimeline._headers['x-rate-limit-limit'] || '0'),
-                                 remaining: parseInt(testUserTimeline._headers['x-rate-limit-remaining'] || '0'),
-                                 reset: parseInt(testUserTimeline._headers['x-rate-limit-reset'] || '0')
-                               } : null);
-    
-    // Create a rate limits object similar to what we'd expect from rateLimitStatus
+    // Create a rate limits object for display
     const rateLimits = {
       data: {
         resources: {
-          '/users/by/username/:username': userLookupHeaders,
-          '/users/:id/tweets': userTimelineHeaders
+          'userLookup': {
+            limit: rateLimitInfo.limit || 0,
+            remaining: rateLimitInfo.remaining || 0,
+            reset: rateLimitInfo.reset || 0
+          },
+          'userTimeline': {
+            limit: rateLimitInfo.limit || 0,
+            remaining: rateLimitInfo.remaining || 0,
+            reset: rateLimitInfo.reset || 0
+          }
         }
       }
     };
     
+    // Add daily limit information if available
+    if (rateLimitInfo.day) {
+      rateLimits.data.resources.app = {
+        limit: rateLimitInfo.day.limit || 0,
+        remaining: rateLimitInfo.day.remaining || 0,
+        reset: rateLimitInfo.day.reset || 0
+      };
+    }
+    
     console.log('\n=== TWITTER API RATE LIMITS ===\n');
     
     // Display rate limits for user lookup endpoint
-    const userLookupLimits = rateLimits.data.resources['/users/by/username/:username'];
-    if (userLookupLimits) {
+    const userLookupEndpoint = rateLimits.data.resources['userLookup'];
+    if (userLookupEndpoint) {
       console.log('User Lookup Endpoint (/users/by/username/:username):');
-      console.log(`  Limit: ${userLookupLimits.limit} requests`);
-      console.log(`  Remaining: ${userLookupLimits.remaining} requests`);
+      console.log(`  Limit: ${userLookupEndpoint.limit} requests`);
+      console.log(`  Remaining: ${userLookupEndpoint.remaining} requests`);
       
-      const resetTime = new Date(userLookupLimits.reset * 1000);
+      const resetTime = new Date(userLookupEndpoint.reset * 1000);
       console.log(`  Resets at: ${resetTime.toISOString()} (${formatTimeUntil(resetTime)})`);
       
       // Calculate usage percentage
-      const usagePercentage = ((userLookupLimits.limit - userLookupLimits.remaining) / userLookupLimits.limit) * 100;
+      const usagePercentage = ((userLookupEndpoint.limit - userLookupEndpoint.remaining) / userLookupEndpoint.limit) * 100;
       console.log(`  Usage: ${usagePercentage.toFixed(2)}%`);
       console.log();
     }
     
     // Display rate limits for user tweets endpoint
-    const userTweetsLimits = rateLimits.data.resources['/users/:id/tweets'];
-    if (userTweetsLimits) {
+    const userTimelineEndpoint = rateLimits.data.resources['userTimeline'];
+    if (userTimelineEndpoint) {
       console.log('User Tweets Endpoint (/users/:id/tweets):');
-      console.log(`  Limit: ${userTweetsLimits.limit} requests`);
-      console.log(`  Remaining: ${userTweetsLimits.remaining} requests`);
+      console.log(`  Limit: ${userTimelineEndpoint.limit} requests`);
+      console.log(`  Remaining: ${userTimelineEndpoint.remaining} requests`);
       
-      const resetTime = new Date(userTweetsLimits.reset * 1000);
+      const resetTime = new Date(userTimelineEndpoint.reset * 1000);
       console.log(`  Resets at: ${resetTime.toISOString()} (${formatTimeUntil(resetTime)})`);
       
       // Calculate usage percentage
-      const usagePercentage = ((userTweetsLimits.limit - userTweetsLimits.remaining) / userTweetsLimits.limit) * 100;
+      const usagePercentage = ((userTimelineEndpoint.limit - userTimelineEndpoint.remaining) / userTimelineEndpoint.limit) * 100;
       console.log(`  Usage: ${usagePercentage.toFixed(2)}%`);
       console.log();
     }
     
     // Display app-wide rate limits if available
     if (rateLimits.data.resources.app) {
-      console.log('App-wide Rate Limits:');
+      console.log('App-wide Rate Limits (Daily):');
       console.log(`  Limit: ${rateLimits.data.resources.app.limit} requests`);
       console.log(`  Remaining: ${rateLimits.data.resources.app.remaining} requests`);
       
@@ -99,40 +98,78 @@ async function checkRateLimits() {
       // Calculate usage percentage
       const usagePercentage = ((rateLimits.data.resources.app.limit - rateLimits.data.resources.app.remaining) / rateLimits.data.resources.app.limit) * 100;
       console.log(`  Usage: ${usagePercentage.toFixed(2)}%`);
+      
+      // Use the new logger function for daily rate limit status
+      logger.dailyRateLimitStatus(
+        rateLimits.data.resources.app.remaining,
+        rateLimits.data.resources.app.limit,
+        rateLimits.data.resources.app.reset * 1000
+      );
+      
       console.log();
     }
     
     console.log('=== RECOMMENDATIONS ===\n');
     
     // Provide recommendations based on rate limit status
-    const lowestRemainingPercentage = Math.min(
-      userLookupLimits ? (userLookupLimits.remaining / userLookupLimits.limit) * 100 : 100,
-      userTweetsLimits ? (userTweetsLimits.remaining / userTweetsLimits.limit) * 100 : 100
-    );
+    let lowestRemainingPercentage = 100;
+    
+    // Check endpoint-specific limits
+    if (userLookupEndpoint && userLookupEndpoint.limit > 0) {
+      lowestRemainingPercentage = Math.min(
+        lowestRemainingPercentage,
+        (userLookupEndpoint.remaining / userLookupEndpoint.limit) * 100
+      );
+    }
+    
+    if (userTimelineEndpoint && userTimelineEndpoint.limit > 0) {
+      lowestRemainingPercentage = Math.min(
+        lowestRemainingPercentage,
+        (userTimelineEndpoint.remaining / userTimelineEndpoint.limit) * 100
+      );
+    }
+    
+    // Check daily app-wide limits
+    if (rateLimits.data.resources.app && rateLimits.data.resources.app.limit > 0) {
+      const appRemainingPercentage = (rateLimits.data.resources.app.remaining / rateLimits.data.resources.app.limit) * 100;
+      lowestRemainingPercentage = Math.min(lowestRemainingPercentage, appRemainingPercentage);
+    }
     
     if (lowestRemainingPercentage < 10) {
       console.log('⚠️ CRITICAL: Rate limits are nearly exhausted!');
       console.log('Recommendations:');
       console.log('- Pause all monitoring for at least 15 minutes');
-      console.log('- Reduce batch size to 1-2 accounts');
-      console.log('- Increase delay between API calls');
+      console.log('- Reduce batch size to 1 account');
+      console.log('- Increase batch interval to 30 minutes');
+      console.log('- Increase delay between API calls to at least 20 seconds');
     } else if (lowestRemainingPercentage < 30) {
       console.log('⚠️ WARNING: Rate limits are running low.');
       console.log('Recommendations:');
-      console.log('- Reduce batch size');
-      console.log('- Increase delay between API calls');
+      console.log('- Reduce batch size to 1 account');
+      console.log('- Increase batch interval to 25 minutes');
+      console.log('- Increase delay between API calls to at least 15 seconds');
       console.log('- Consider pausing non-essential monitoring');
     } else if (lowestRemainingPercentage < 60) {
       console.log('ℹ️ NOTICE: Rate limits are being used at a moderate rate.');
       console.log('Recommendations:');
       console.log('- Current settings should be fine');
+      console.log('- Keep batch size at 1 account');
+      console.log('- Maintain batch interval of at least 20 minutes');
       console.log('- Monitor usage if processing many accounts');
     } else {
       console.log('✅ GOOD: Plenty of rate limit capacity available.');
       console.log('Recommendations:');
       console.log('- Current settings are working well');
-      console.log('- You can safely process more accounts if needed');
+      console.log('- Keep batch size at 1 account for safety');
+      console.log('- Maintain batch interval of at least 15 minutes');
     }
+    
+    // Display current application settings
+    console.log('\n=== CURRENT APPLICATION SETTINGS ===\n');
+    console.log('- Batch Size: 1 account');
+    console.log('- Batch Interval: 25 minutes');
+    console.log('- Base API Delay: 15 seconds');
+    console.log('- Daily API Limit: 90 calls');
     
   } catch (error) {
     console.error('Error checking rate limits:', error);

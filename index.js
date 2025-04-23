@@ -14,14 +14,85 @@ const TEST_ACCOUNT = 'OBEYGIANT'; // Default test account (Shepard Fairey's acco
 const TWEETS_PER_ACCOUNT = 3;
 const INCLUDE_REPLIES = false;
 const INCLUDE_RETWEETS = false;
-const BASE_API_DELAY_MS = 10000; // Increased to 10 seconds between API calls
+const BASE_API_DELAY_MS = 15000; // Increased to 15 seconds between API calls
 const MAX_RETRY_ATTEMPTS = 3; // Maximum number of retry attempts for rate limit errors
-const BATCH_SIZE = TEST_MODE ? 1 : 2; // Use batch size of 1 in test mode, 2 in production
-const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 16; // Shorter interval in test mode, 16 minutes in production (just over Twitter's 15-minute rate limit reset)
+const BATCH_SIZE = TEST_MODE ? 1 : 1; // Use batch size of 1 for both test and production mode
+const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 25; // Shorter interval in test mode, 25 minutes in production (well over Twitter's 15-minute rate limit reset)
 const CRON_SCHEDULE = TEST_MODE ? '*/30 * * * *' : '0 */6 * * *'; // Every 30 minutes in test mode, every 6 hours in production
+const DAILY_API_LIMIT = 90; // Set slightly below Twitter's 96 requests per day limit to provide a safety margin
+
+// Rate limit tracking
+let apiCallsToday = 0;
+let rateLimitResetTime = null;
+let dailyLimitResetTime = null;
+
+// Function to check if we're approaching API limits
+function isApproachingRateLimit() {
+  return apiCallsToday >= DAILY_API_LIMIT;
+}
+
+// Function to reset API call counter
+function resetApiCallCounter() {
+  apiCallsToday = 0;
+  dailyLimitResetTime = null;
+  logger.info('Daily API call counter has been reset');
+}
+
+// Function to track API calls
+function trackApiCall(rateLimitInfo) {
+  apiCallsToday++;
+  
+  // Update rate limit reset times if available
+  if (rateLimitInfo && rateLimitInfo.reset) {
+    rateLimitResetTime = new Date(rateLimitInfo.reset * 1000);
+  }
+  
+  if (rateLimitInfo && rateLimitInfo.day && rateLimitInfo.day.reset) {
+    dailyLimitResetTime = new Date(rateLimitInfo.day.reset * 1000);
+    
+    // Schedule reset of counter when daily limit resets
+    const now = new Date();
+    const msUntilReset = dailyLimitResetTime.getTime() - now.getTime();
+    
+    if (msUntilReset > 0) {
+      setTimeout(resetApiCallCounter, msUntilReset + 60000); // Add 1 minute buffer
+    }
+  }
+  
+  logger.debug(`API call tracked. Total today: ${apiCallsToday}/${DAILY_API_LIMIT}`);
+  
+  // Log API usage status
+  const usagePercentage = Math.round((apiCallsToday / DAILY_API_LIMIT) * 100);
+  logger.apiCallTracking(apiCallsToday, DAILY_API_LIMIT, usagePercentage);
+  
+  // Log detailed daily limit info if available
+  if (rateLimitInfo && rateLimitInfo.day) {
+    logger.dailyRateLimitStatus(
+      rateLimitInfo.day.remaining,
+      rateLimitInfo.day.limit,
+      rateLimitInfo.day.reset * 1000
+    );
+  }
+}
 
 // Function to process a single account
 async function processAccount(account, retryCount = 0) {
+  // Check if we're approaching rate limits before processing
+  if (isApproachingRateLimit()) {
+    logger.warn(`Skipping account @${account.handle} - approaching daily API limit (${apiCallsToday}/${DAILY_API_LIMIT})`);
+    
+    // Log with more detailed formatting
+    const usagePercentage = Math.round((apiCallsToday / DAILY_API_LIMIT) * 100);
+    logger.apiCallTracking(apiCallsToday, DAILY_API_LIMIT, usagePercentage);
+    
+    if (dailyLimitResetTime) {
+      const resetTimeStr = dailyLimitResetTime.toISOString();
+      const now = new Date();
+      const hoursUntilReset = Math.round((dailyLimitResetTime - now) / (1000 * 60 * 60) * 10) / 10;
+      logger.warn(`Daily limit resets at: ${resetTimeStr} (in approximately ${hoursUntilReset} hours)`);
+    }
+    return;
+  }
   try {
     logger.info(`Processing account: @${account.handle}`);
     
@@ -34,6 +105,9 @@ async function processAccount(account, retryCount = 0) {
     
     while (retryAttempt < MAX_RETRIES) {
       try {
+        // Track this API call
+        trackApiCall();
+        
         tweets = await twitter.fetchRecentTweets(
           account.handle, 
           TWEETS_PER_ACCOUNT,
@@ -41,6 +115,11 @@ async function processAccount(account, retryCount = 0) {
           INCLUDE_RETWEETS,
           db
         );
+        
+        // Update rate limit info if available in the response
+        if (tweets && tweets.rateLimit) {
+          trackApiCall(tweets.rateLimit);
+        }
         
         // If we got tweets, break out of the retry loop
         if (tweets && tweets.length > 0) {
@@ -81,9 +160,16 @@ async function processAccount(account, retryCount = 0) {
           if (error.rateLimit && error.rateLimit.reset) {
             const resetTime = error.rateLimit.reset * 1000; // Convert to milliseconds
             const now = Date.now();
-            waitTime = Math.max(resetTime - now + 30000, 60000); // Wait until reset + 30 seconds, or at least 1 minute
+            waitTime = Math.max(resetTime - now + 60000, 60000); // Wait until reset + 60 seconds, or at least 1 minute
             
+            // Track this rate limit hit
+            trackApiCall(error.rateLimit);
+            
+            // Log detailed rate limit information
             logger.rateLimitHit('Twitter API', new Date(resetTime).toISOString());
+            if (error.rateLimit.day) {
+              logger.warn(`Daily limit status: ${error.rateLimit.day.remaining}/${error.rateLimit.day.limit} remaining, resets at ${new Date(error.rateLimit.day.reset * 1000).toISOString()}`);
+            }
           }
           
           // Wait using exponential backoff
@@ -164,9 +250,16 @@ async function processAccount(account, retryCount = 0) {
       if (error.rateLimit && error.rateLimit.reset) {
         const resetTime = error.rateLimit.reset * 1000; // Convert to milliseconds
         const now = Date.now();
-        waitTime = Math.max(resetTime - now + 30000, 60000); // Wait until reset + 30 seconds, or at least 1 minute
+        waitTime = Math.max(resetTime - now + 60000, 60000); // Wait until reset + 60 seconds, or at least 1 minute
         
+        // Track this rate limit hit
+        trackApiCall(error.rateLimit);
+        
+        // Log detailed rate limit information
         logger.rateLimitHit('Twitter API', new Date(resetTime).toISOString());
+        if (error.rateLimit.day) {
+          logger.warn(`Daily limit status: ${error.rateLimit.day.remaining}/${error.rateLimit.day.limit} remaining, resets at ${new Date(error.rateLimit.day.reset * 1000).toISOString()}`);
+        }
       }
       
       // Wait using exponential backoff
@@ -183,17 +276,16 @@ async function processAccount(account, retryCount = 0) {
 
 // Function to calculate adaptive delay based on batch size and rate limits
 function calculateAdaptiveDelay(batchSize) {
-  // Twitter's rate limit is typically around 300 requests per 15 minutes (900 seconds)
+  // Twitter's rate limit is now much stricter
   // We make approximately 2 API calls per account (getUserId and userTimeline)
-  // So we can process about 150 accounts in 15 minutes
-  // To be safe, we'll aim for processing batchSize accounts in 30 minutes
+  // To be safe, we'll aim for processing batchSize accounts in 45 minutes
   
-  const safetyFactor = 2.0; // Double the time as a safety margin
-  const thirtyMinutesInMs = 30 * 60 * 1000;
+  const safetyFactor = 3.0; // Triple the time as a safety margin
+  const fortyFiveMinutesInMs = 45 * 60 * 1000;
   const apiCallsPerAccount = 2; // getUserId and userTimeline
   
-  // Calculate delay between accounts to spread them out over 30 minutes
-  const delayBetweenAccounts = (thirtyMinutesInMs / batchSize) * safetyFactor;
+  // Calculate delay between accounts to spread them out over 45 minutes
+  const delayBetweenAccounts = (fortyFiveMinutesInMs / batchSize) * safetyFactor;
   
   // Use at least the base delay
   return Math.max(delayBetweenAccounts, BASE_API_DELAY_MS);
@@ -201,6 +293,22 @@ function calculateAdaptiveDelay(batchSize) {
 
 // Function to process a batch of accounts
 async function processBatch(accounts, batchNumber, totalBatches) {
+  // Check if we're approaching rate limits before processing batch
+  if (isApproachingRateLimit()) {
+    logger.warn(`Skipping batch ${batchNumber}/${totalBatches} - approaching daily API limit (${apiCallsToday}/${DAILY_API_LIMIT})`);
+    
+    // Log with more detailed formatting
+    const usagePercentage = Math.round((apiCallsToday / DAILY_API_LIMIT) * 100);
+    logger.apiCallTracking(apiCallsToday, DAILY_API_LIMIT, usagePercentage);
+    
+    if (dailyLimitResetTime) {
+      const resetTimeStr = dailyLimitResetTime.toISOString();
+      const now = new Date();
+      const hoursUntilReset = Math.round((dailyLimitResetTime - now) / (1000 * 60 * 60) * 10) / 10;
+      logger.warn(`Daily limit resets at: ${resetTimeStr} (in approximately ${hoursUntilReset} hours)`);
+    }
+    return;
+  }
   logger.info(`Processing batch ${batchNumber}/${totalBatches} with ${accounts.length} accounts...`);
   
   // Calculate adaptive delay based on batch size
@@ -271,6 +379,11 @@ async function runTestMode() {
 
 // Main monitoring function
 async function monitorAccounts() {
+  // Reset API call counter if it's a new day
+  const now = new Date();
+  if (dailyLimitResetTime && now > dailyLimitResetTime) {
+    resetApiCallCounter();
+  }
   try {
     logger.heartbeat();
     logger.info('Starting account monitoring process...');

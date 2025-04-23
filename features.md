@@ -4,9 +4,15 @@
 
 ### X (Twitter) Account Monitoring
 - **Automated Tweet Collection**: Automatically fetches and stores the most recent tweets from monitored accounts
-- **Engagement Metrics**: Collects and calculates engagement scores based on likes, retweets, replies, and quotes
-- **Tweet Summaries**: Generates concise summaries of tweet content
-- **Vibe Tagging**: Extracts hashtags and categorizes tweets
+- **Engagement Analytics**:
+  - **Weighted Scoring**: Calculates engagement scores using a weighted formula (Retweets: 1.5x, Quotes: 1.2x, Replies: 1.0x, Likes: 0.8x)
+  - **Visual Metrics**: Displays engagement scores with progress bars and color-coded badges
+  - **Raw Metrics Storage**: Preserves original engagement counts for detailed analysis
+  - **Trend Tracking**: Enables monitoring of engagement changes over time
+- **Content Analysis**:
+  - **Tweet Summaries**: Generates concise summaries of tweet content
+  - **Hashtag Extraction**: Automatically extracts hashtags as "vibe tags"
+  - **Content Categorization**: Groups tweets by topic and sentiment indicators
 - **Configurable Tweet Count**: Customizable number of tweets to store per account (default: 3)
 - **Content Filtering**: Options to include or exclude replies and retweets
 - **Scheduled Monitoring**: Runs on a configurable schedule (default: every 6 hours)

@@ -114,6 +114,7 @@ async function getUserId(handle, db) {
 
 // Function to fetch recent tweets for a user
 async function fetchRecentTweets(handle, count = 3, includeReplies = false, includeRetweets = false, db = null) {
+  let rateLimitInfo = null;
   try {
     console.log(`Fetching recent tweets for @${handle}...`);
     
@@ -125,6 +126,7 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
     }
     
     // Fetch tweets for the user with engagement metrics
+    // Use a lower max_results to reduce API usage
     const tweets = await readOnlyClient.v2.userTimeline(userId, {
       max_results: 10, // Fetch more than needed to filter out replies/retweets if necessary
       'tweet.fields': [
@@ -257,6 +259,14 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
     });
     
     console.log(`Fetched ${formattedTweets.length} tweets for @${handle}.`);
+    
+    // If we have rate limit info, attach it to the result
+    if (tweets.rateLimit) {
+      rateLimitInfo = tweets.rateLimit;
+      // Add rate limit info to the result
+      formattedTweets.rateLimit = rateLimitInfo;
+    }
+    
     return formattedTweets;
   } catch (error) {
     console.error(`Error fetching tweets for @${handle}:`, error);
@@ -267,11 +277,22 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
       if (resetTime) {
         const resetDate = new Date(resetTime * 1000);
         console.error(`Rate limit exceeded. Resets at ${resetDate.toISOString()}`);
+        
+        // Store rate limit info to return to caller
+        rateLimitInfo = error.rateLimit;
       }
+      
+      // Enhance error with rate limit info
+      error.rateLimit = rateLimitInfo;
       throw error; // Let the caller handle rate limits
     }
     
-    return [];
+    // Return empty array with rate limit info if available
+    const result = [];
+    if (rateLimitInfo) {
+      result.rateLimit = rateLimitInfo;
+    }
+    return result;
   }
 }
 
@@ -282,11 +303,44 @@ function delay(ms) {
 
 // Exponential backoff for retries
 async function exponentialBackoff(retryCount, baseDelay = 1000) {
-  const delayMs = baseDelay * Math.pow(2, retryCount);
-  const jitter = Math.random() * 1000;
+  // Use a more aggressive backoff strategy for rate limits
+  const delayMs = baseDelay * Math.pow(2.5, retryCount);
+  const jitter = Math.random() * 2000; // Add more jitter
   const totalDelay = delayMs + jitter;
   console.log(`Exponential backoff: Waiting ${Math.round(totalDelay / 1000)} seconds before retry #${retryCount + 1}...`);
   await delay(totalDelay);
+}
+
+// Function to check current rate limits
+async function checkRateLimits() {
+  try {
+    // Make a lightweight API call to check rate limits
+    const response = await readOnlyClient.v2.get('users/me');
+    
+    // Extract rate limit information
+    const rateLimitInfo = response.rateLimit;
+    
+    return {
+      success: true,
+      rateLimitInfo
+    };
+  } catch (error) {
+    console.error('Error checking rate limits:', error);
+    
+    // If we got rate limit info even in the error, return it
+    if (error.rateLimit) {
+      return {
+        success: false,
+        rateLimitInfo: error.rateLimit,
+        error
+      };
+    }
+    
+    return {
+      success: false,
+      error
+    };
+  }
 }
 
 // Save cache on process exit
@@ -301,5 +355,6 @@ module.exports = {
   getUserId,
   delay,
   exponentialBackoff,
-  userIdCache
+  userIdCache,
+  checkRateLimits
 };

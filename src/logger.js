@@ -83,6 +83,28 @@ function rateLimitHit(endpoint, resetTime) {
   warn(`Rate limit hit for ${endpoint}. Resets at ${new Date(resetTime).toISOString()}`);
 }
 
+// Log daily rate limit status
+function dailyRateLimitStatus(remaining, total, resetTime) {
+  if (remaining <= total * 0.2) {
+    warn(`CRITICAL: Daily rate limit status: ${remaining}/${total} remaining (${Math.round((remaining/total)*100)}%). Resets at ${new Date(resetTime).toISOString()}`);
+  } else if (remaining <= total * 0.5) {
+    warn(`WARNING: Daily rate limit status: ${remaining}/${total} remaining (${Math.round((remaining/total)*100)}%). Resets at ${new Date(resetTime).toISOString()}`);
+  } else {
+    info(`Daily rate limit status: ${remaining}/${total} remaining (${Math.round((remaining/total)*100)}%). Resets at ${new Date(resetTime).toISOString()}`);
+  }
+}
+
+// Log API call tracking
+function apiCallTracking(current, limit, percentage) {
+  if (percentage >= 80) {
+    warn(`API usage: ${current}/${limit} calls (${percentage}%) - Approaching limit`);
+  } else if (percentage >= 50) {
+    info(`API usage: ${current}/${limit} calls (${percentage}%)`);
+  } else {
+    debug(`API usage: ${current}/${limit} calls (${percentage}%)`);
+  }
+}
+
 module.exports = {
   LOG_LEVELS,
   setLogLevel,
@@ -92,5 +114,7 @@ module.exports = {
   error,
   heartbeat,
   accountScan,
-  rateLimitHit
+  rateLimitHit,
+  dailyRateLimitStatus,
+  apiCallTracking
 };
