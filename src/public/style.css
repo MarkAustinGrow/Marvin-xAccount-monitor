@@ -168,12 +168,29 @@ header h1 {
   color: var(--text-color);
 }
 
+.table thead th {
+  color: var(--heading-color);
+  border-color: var(--border-color);
+  background-color: rgba(0, 0, 0, 0.3);
+}
+
 .table-striped > tbody > tr:nth-of-type(odd) {
   background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-color);
+}
+
+.table-striped > tbody > tr:nth-of-type(even) {
+  background-color: rgba(0, 0, 0, 0.2);
+  color: var(--text-color);
 }
 
 .table-hover > tbody > tr:hover {
   background-color: rgba(255, 59, 48, 0.1);
+  color: var(--text-color);
+}
+
+.table td, .table th {
+  border-color: var(--border-color);
 }
 
 /* Badges */
