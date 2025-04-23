@@ -64,6 +64,24 @@ app.get('/tweets', async (req, res) => {
   }
 });
 
+// Route for account management page
+app.get('/accounts', async (req, res) => {
+  try {
+    // Get all accounts
+    const accounts = await db.getAccountsToMonitor();
+    
+    // Render the accounts management page
+    res.render('accounts', { 
+      accounts,
+      title: 'Marvin Account Monitor - Manage Accounts',
+      page: 'accounts'
+    });
+  } catch (error) {
+    console.error('Error rendering accounts management page:', error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
 // API endpoint to update account status
 app.post('/api/accounts/:id/status', async (req, res) => {
   try {
@@ -80,6 +98,63 @@ app.post('/api/accounts/:id/status', async (req, res) => {
     }
   } catch (error) {
     console.error('Error updating account status:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+});
+
+// API endpoint to add a new account
+app.post('/api/accounts', async (req, res) => {
+  try {
+    const { handle, priority } = req.body;
+    
+    // Validate input
+    if (!handle) {
+      return res.status(400).json({ success: false, error: 'Account handle is required' });
+    }
+    
+    // Remove @ symbol if present
+    const cleanHandle = handle.startsWith('@') ? handle.substring(1) : handle;
+    
+    // Add the account
+    const result = await db.addAccount(cleanHandle, priority);
+    
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error('Error adding account:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+});
+
+// API endpoint to remove an account
+app.delete('/api/accounts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Remove the account
+    const result = await db.removeAccount(id);
+    
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(500).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error('Error removing account:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+});
+
+// API endpoint to get all accounts
+app.get('/api/accounts', async (req, res) => {
+  try {
+    const accounts = await db.getAccountsToMonitor();
+    res.json({ success: true, accounts });
+  } catch (error) {
+    console.error('Error fetching accounts:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 });

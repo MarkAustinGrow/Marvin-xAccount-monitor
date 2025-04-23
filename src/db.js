@@ -241,6 +241,102 @@ async function getAllAccountsWithTweets() {
   }
 }
 
+// Function to add a new account to monitor
+async function addAccount(handle, priority = 3) {
+  try {
+    // Check if account already exists
+    const { data: existingAccount, error: checkError } = await supabase
+      .from('x_accounts')
+      .select('id')
+      .eq('handle', handle)
+      .single();
+    
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 is "no rows returned" error
+      console.error(`Error checking if account exists: ${handle}`, checkError);
+      return { success: false, error: 'Error checking if account exists' };
+    }
+    
+    if (existingAccount) {
+      return { success: false, error: 'Account already exists' };
+    }
+    
+    // Add the new account
+    const { data, error } = await supabase
+      .from('x_accounts')
+      .insert({
+        handle,
+        priority: parseInt(priority) || 3,
+        platform: 'x',
+        last_checked: null
+      });
+    
+    if (error) {
+      console.error(`Error adding account: ${handle}`, error);
+      return { success: false, error: 'Failed to add account' };
+    }
+    
+    console.log(`Added account: @${handle}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error in addAccount:', error);
+    return { success: false, error: 'Internal server error' };
+  }
+}
+
+// Function to remove an account from monitoring
+async function removeAccount(id) {
+  try {
+    // First delete any cached tweets for this account
+    const { error: tweetsError } = await supabase
+      .from('tweets_cache')
+      .delete()
+      .eq('account_id', id);
+    
+    if (tweetsError) {
+      console.error(`Error deleting tweets for account ID ${id}:`, tweetsError);
+      return { success: false, error: 'Failed to delete account tweets' };
+    }
+    
+    // Then delete the account
+    const { error } = await supabase
+      .from('x_accounts')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error(`Error deleting account ID ${id}:`, error);
+      return { success: false, error: 'Failed to delete account' };
+    }
+    
+    console.log(`Removed account ID: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error in removeAccount:', error);
+    return { success: false, error: 'Internal server error' };
+  }
+}
+
+// Function to get an account by handle
+async function getAccountByHandle(handle) {
+  try {
+    const { data, error } = await supabase
+      .from('x_accounts')
+      .select('*')
+      .eq('handle', handle)
+      .single();
+    
+    if (error) {
+      console.error(`Error fetching account by handle: ${handle}`, error);
+      return null;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error in getAccountByHandle:', error);
+    return null;
+  }
+}
+
 module.exports = {
   supabase,
   initializeDatabase,
@@ -252,5 +348,8 @@ module.exports = {
   addAccountToReview,
   getAccountsToReview,
   updateAccountReviewStatus,
-  getAllAccountsWithTweets
+  getAllAccountsWithTweets,
+  addAccount,
+  removeAccount,
+  getAccountByHandle
 };
