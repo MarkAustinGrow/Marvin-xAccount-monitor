@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Set up the refresh button
   setupRefreshButton();
+  
+  // Ensure proper styling for all table rows on page load
+  ensureProperRowStyling();
 });
 
 // Set up the account search functionality
@@ -272,6 +275,37 @@ function updateAccountCount() {
   if (countBadge) {
     countBadge.textContent = `Accounts: ${accountRows.length}`;
   }
+  
+  // Ensure proper styling for all rows
+  ensureProperRowStyling();
+}
+
+// Ensure proper styling for all table rows
+function ensureProperRowStyling() {
+  const tableBody = document.getElementById('accounts-table-body');
+  if (!tableBody) return;
+  
+  // Remove any empty rows that might have been created
+  const allRows = tableBody.querySelectorAll('tr');
+  allRows.forEach(row => {
+    if (!row.classList.contains('account-row') || row.cells.length === 0) {
+      row.remove();
+    }
+  });
+  
+  // Apply proper styling to remaining rows
+  const accountRows = tableBody.querySelectorAll('.account-row');
+  accountRows.forEach((row, index) => {
+    // Ensure all rows have the account-row class and are visible
+    row.style.display = 'table-row';
+    
+    // Apply alternating background colors
+    if (index % 2 === 0) {
+      row.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+    } else {
+      row.style.backgroundColor = 'rgba(0, 0, 0, 0.2)';
+    }
+  });
 }
 
 // Show a toast message

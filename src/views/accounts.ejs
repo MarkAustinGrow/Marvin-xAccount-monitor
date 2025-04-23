@@ -91,7 +91,7 @@
                 </thead>
                 <tbody id="accounts-table-body">
                   <% accounts.forEach(account => { %>
-                    <tr class="account-row" data-handle="<%= account.handle.toLowerCase() %>">
+                    <tr class="account-row" data-handle="<%= account.handle ? account.handle.toLowerCase() : '' %>">
                       <td>@<%= account.handle %></td>
                       <td>
                         <div class="input-group input-group-sm">
