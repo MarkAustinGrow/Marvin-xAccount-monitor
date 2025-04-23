@@ -93,7 +93,20 @@
                   <% accounts.forEach(account => { %>
                     <tr class="account-row" data-handle="<%= account.handle.toLowerCase() %>">
                       <td>@<%= account.handle %></td>
-                      <td><%= account.priority %></td>
+                      <td>
+                        <div class="input-group input-group-sm">
+                          <select class="form-select priority-select" data-id="<%= account.id %>" data-original="<%= account.priority %>">
+                            <option value="1" <%= account.priority === 1 ? 'selected' : '' %>>1 - Highest</option>
+                            <option value="2" <%= account.priority === 2 ? 'selected' : '' %>>2 - High</option>
+                            <option value="3" <%= account.priority === 3 ? 'selected' : '' %>>3 - Normal</option>
+                            <option value="4" <%= account.priority === 4 ? 'selected' : '' %>>4 - Low</option>
+                            <option value="5" <%= account.priority === 5 ? 'selected' : '' %>>5 - Lowest</option>
+                          </select>
+                          <button class="btn btn-outline-primary save-priority" data-id="<%= account.id %>" style="display: none;">
+                            <i class="bi bi-check"></i>
+                          </button>
+                        </div>
+                      </td>
                       <td><%= account.last_checked ? new Date(account.last_checked).toLocaleString() : 'Never' %></td>
                       <td>
                         <button class="btn btn-sm btn-danger delete-account" data-id="<%= account.id %>" data-handle="<%= account.handle %>">

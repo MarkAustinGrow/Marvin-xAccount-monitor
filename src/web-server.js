@@ -159,6 +159,31 @@ app.get('/api/accounts', async (req, res) => {
   }
 });
 
+// API endpoint to update account priority
+app.patch('/api/accounts/:id/priority', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { priority } = req.body;
+    
+    // Validate input
+    if (priority === undefined) {
+      return res.status(400).json({ success: false, error: 'Priority is required' });
+    }
+    
+    // Update the account priority
+    const result = await db.updateAccountPriority(id, priority);
+    
+    if (result.success) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    console.error('Error updating account priority:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+});
+
 // Start the server
 function startServer() {
   return new Promise((resolve, reject) => {

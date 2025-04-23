@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', function() {
   // Set up the delete account buttons
   setupDeleteAccountButtons();
   
+  // Set up the priority select functionality
+  setupPrioritySelects();
+  
   // Set up the refresh button
   setupRefreshButton();
 });
@@ -183,6 +186,82 @@ function setupRefreshButton() {
       window.location.reload();
     });
   }
+}
+
+// Set up the priority select functionality
+function setupPrioritySelects() {
+  const prioritySelects = document.querySelectorAll('.priority-select');
+  
+  prioritySelects.forEach(select => {
+    // Store the original value
+    const originalValue = select.value;
+    
+    // Add change event listener
+    select.addEventListener('change', function() {
+      const id = this.dataset.id;
+      const saveButton = this.parentElement.querySelector('.save-priority');
+      
+      // Show the save button if the value has changed
+      if (this.value !== this.dataset.original) {
+        saveButton.style.display = 'block';
+      } else {
+        saveButton.style.display = 'none';
+      }
+    });
+    
+    // Add save button click event listener
+    const saveButton = select.parentElement.querySelector('.save-priority');
+    if (saveButton) {
+      saveButton.addEventListener('click', async function() {
+        const id = this.dataset.id;
+        const select = this.parentElement.querySelector('.priority-select');
+        const newPriority = select.value;
+        
+        // Disable the button during the request
+        this.disabled = true;
+        this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+        
+        try {
+          // Send the request to update the priority
+          const response = await fetch(`/api/accounts/${id}/priority`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ priority: newPriority })
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            // Update the original value
+            select.dataset.original = newPriority;
+            
+            // Hide the save button
+            this.style.display = 'none';
+            
+            // Show success message
+            showToast('Priority updated successfully', 'success');
+          } else {
+            showToast(`Error: ${data.error}`, 'danger');
+            
+            // Reset to original value
+            select.value = select.dataset.original;
+          }
+        } catch (error) {
+          console.error('Error updating priority:', error);
+          showToast('An error occurred while updating priority', 'danger');
+          
+          // Reset to original value
+          select.value = select.dataset.original;
+        } finally {
+          // Re-enable the button
+          this.disabled = false;
+          this.innerHTML = '<i class="bi bi-check"></i>';
+        }
+      });
+    }
+  });
 }
 
 // Update the account count in the badge

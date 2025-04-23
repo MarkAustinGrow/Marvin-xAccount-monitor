@@ -337,6 +337,34 @@ async function getAccountByHandle(handle) {
   }
 }
 
+// Function to update account priority
+async function updateAccountPriority(id, priority) {
+  try {
+    // Validate priority
+    const priorityNum = parseInt(priority);
+    if (isNaN(priorityNum) || priorityNum < 1 || priorityNum > 5) {
+      return { success: false, error: 'Invalid priority value. Must be between 1 and 5.' };
+    }
+    
+    // Update the account priority
+    const { error } = await supabase
+      .from('x_accounts')
+      .update({ priority: priorityNum })
+      .eq('id', id);
+    
+    if (error) {
+      console.error(`Error updating priority for account ID ${id}:`, error);
+      return { success: false, error: 'Failed to update account priority' };
+    }
+    
+    console.log(`Updated priority for account ID ${id} to ${priorityNum}`);
+    return { success: true };
+  } catch (error) {
+    console.error('Error in updateAccountPriority:', error);
+    return { success: false, error: 'Internal server error' };
+  }
+}
+
 module.exports = {
   supabase,
   initializeDatabase,
@@ -351,5 +379,6 @@ module.exports = {
   getAllAccountsWithTweets,
   addAccount,
   removeAccount,
-  getAccountByHandle
+  getAccountByHandle,
+  updateAccountPriority
 };
