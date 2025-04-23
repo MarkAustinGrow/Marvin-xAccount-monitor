@@ -12,7 +12,7 @@ const password = process.env.WEB_PASSWORD || 'password';
 app.use(basicAuth({
   users: { [username]: password },
   challenge: true,
-  realm: 'Marvin Account Monitor'
+  realm: 'Marvin X Account Manager'
 }));
 
 // Middleware
@@ -37,7 +37,7 @@ app.get('/', async (req, res) => {
     res.render('index', { 
       accountsToReview,
       allAccounts,
-      title: 'Marvin Account Monitor - Account Review',
+      title: 'Marvin X Account Manager - Account Review',
       page: 'review'
     });
   } catch (error) {
@@ -55,7 +55,7 @@ app.get('/tweets', async (req, res) => {
     // Render the tweets page
     res.render('tweets', { 
       accountsWithTweets,
-      title: 'Marvin Account Monitor - Tweet Cache',
+      title: 'Marvin X Account Manager - Tweet Cache',
       page: 'tweets'
     });
   } catch (error) {
@@ -73,7 +73,7 @@ app.get('/accounts', async (req, res) => {
     // Render the accounts management page
     res.render('accounts', { 
       accounts,
-      title: 'Marvin Account Monitor - Manage Accounts',
+      title: 'Marvin X Account Manager - Manage Accounts',
       page: 'accounts'
     });
   } catch (error) {
