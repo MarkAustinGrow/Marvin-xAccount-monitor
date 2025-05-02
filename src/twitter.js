@@ -240,6 +240,30 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
         ? `${tweet.text.substring(0, 50)}...` 
         : tweet.text;
       
+      // Fix: Ensure public_metrics is properly formatted as a string
+      // If it's already an object, stringify it properly
+      let publicMetricsStr = null;
+      if (publicMetrics) {
+        try {
+          // If it's already a string, validate it's proper JSON
+          if (typeof publicMetrics === 'string') {
+            // Try to parse and re-stringify to ensure valid JSON
+            JSON.parse(publicMetrics);
+            publicMetricsStr = publicMetrics;
+          } else {
+            // It's an object, stringify it
+            publicMetricsStr = JSON.stringify(publicMetrics);
+          }
+        } catch (e) {
+          // If there's an error, use a default empty object string
+          console.error(`Error formatting public_metrics for tweet ${tweet.id}:`, e);
+          publicMetricsStr = '{}';
+        }
+      } else {
+        // If publicMetrics is null or undefined, use empty object
+        publicMetricsStr = '{}';
+      }
+      
       return {
         tweet_id: tweet.id,
         tweet_text: tweet.text,
@@ -253,8 +277,8 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
         vibe_tags: JSON.stringify(hashtags), // Store as JSON string until we implement proper tagging
         processed_at: new Date().toISOString(),
         
-        // Store raw metrics for reference
-        public_metrics: JSON.stringify(publicMetrics)
+        // Store raw metrics for reference - with proper error handling
+        public_metrics: publicMetricsStr
       };
     });
     
