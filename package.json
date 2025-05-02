@@ -8,6 +8,7 @@
     "start:test": "node index.js --test",
     "setup": "node setup.js",
     "parse-accounts": "node scripts/parse-accounts.js",
+    "import-accounts": "node scripts/import-twitter-accounts.js",
     "add-test-account": "node scripts/add-test-account.js",
     "run-single-test": "node scripts/run-single-test.js",
     "check-limits": "node scripts/check-rate-limits.js",

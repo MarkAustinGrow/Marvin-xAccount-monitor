@@ -14,12 +14,12 @@ const TEST_ACCOUNT = 'OBEYGIANT'; // Default test account (Shepard Fairey's acco
 const TWEETS_PER_ACCOUNT = 3;
 const INCLUDE_REPLIES = false;
 const INCLUDE_RETWEETS = false;
-const BASE_API_DELAY_MS = 15000; // Increased to 15 seconds between API calls
+const BASE_API_DELAY_MS = 180000; // Increased to 3 minutes between API calls to respect Basic tier rate limits
 const MAX_RETRY_ATTEMPTS = 3; // Maximum number of retry attempts for rate limit errors
 const BATCH_SIZE = TEST_MODE ? 1 : 1; // Use batch size of 1 for both test and production mode
-const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 25; // Shorter interval in test mode, 25 minutes in production (well over Twitter's 15-minute rate limit reset)
-const CRON_SCHEDULE = TEST_MODE ? '*/30 * * * *' : '0 */6 * * *'; // Every 30 minutes in test mode, every 6 hours in production
-const DAILY_API_LIMIT = 90; // Set slightly below Twitter's 96 requests per day limit to provide a safety margin
+const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 45; // Shorter interval in test mode, 45 minutes in production (3 batches per rate limit window)
+const CRON_SCHEDULE = TEST_MODE ? '*/30 * * * *' : '0 */12 * * *'; // Every 30 minutes in test mode, every 12 hours in production
+const DAILY_API_LIMIT = 400; // Set to 80% of the 500/day app limit for Basic tier
 
 // Rate limit tracking
 let apiCallsToday = 0;

@@ -101,6 +101,26 @@ To extract X handles from `x-accounts.txt` and populate the database:
 npm run parse-accounts
 ```
 
+### Import Accounts from JSON
+
+To import Twitter accounts from a JSON file:
+
+1. Create or update the `data/twitter-accounts.json` file with an array of Twitter handles:
+   ```json
+   [
+     "@username1",
+     "@username2",
+     "@username3"
+   ]
+   ```
+
+2. Run the import script:
+   ```
+   npm run import-accounts
+   ```
+
+This is useful when you have a list of accounts in a different format than the `x-accounts.txt` file. See `data/README.md` for more details on the import process and supported formats.
+
 ### Start Monitoring
 
 To start the monitoring process:
