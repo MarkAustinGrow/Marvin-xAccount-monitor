@@ -16,8 +16,8 @@ const INCLUDE_REPLIES = false;
 const INCLUDE_RETWEETS = false;
 const BASE_API_DELAY_MS = 180000; // Increased to 3 minutes between API calls to respect Basic tier rate limits
 const MAX_RETRY_ATTEMPTS = 3; // Maximum number of retry attempts for rate limit errors
-const BATCH_SIZE = TEST_MODE ? 1 : 1; // Use batch size of 1 for both test and production mode
-const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 45; // Shorter interval in test mode, 45 minutes in production (3 batches per rate limit window)
+const BATCH_SIZE = TEST_MODE ? 1 : 3; // Use batch size of 1 for test mode, 3 for production mode
+const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 20; // Shorter interval in test mode, 20 minutes in production
 const CRON_SCHEDULE = TEST_MODE ? '*/30 * * * *' : '0 */12 * * *'; // Every 30 minutes in test mode, every 12 hours in production
 const DAILY_API_LIMIT = 400; // Set to 80% of the 500/day app limit for Basic tier
 
