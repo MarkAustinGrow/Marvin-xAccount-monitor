@@ -126,9 +126,9 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
     }
     
     // Fetch tweets for the user with engagement metrics
-    // Use a lower max_results to reduce API usage
+    // Increase max_results to get more tweets to choose from
     const tweets = await readOnlyClient.v2.userTimeline(userId, {
-      max_results: 10, // Fetch more than needed to filter out replies/retweets if necessary
+      max_results: 30, // Fetch more tweets to ensure we have enough after filtering
       'tweet.fields': [
         'created_at', 
         'text', 

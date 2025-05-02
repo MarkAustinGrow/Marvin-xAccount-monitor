@@ -11,9 +11,9 @@ const TEST_MODE = args.includes('--test');
 const TEST_ACCOUNT = 'OBEYGIANT'; // Default test account (Shepard Fairey's account)
 
 // Configuration
-const TWEETS_PER_ACCOUNT = 3;
-const INCLUDE_REPLIES = false;
-const INCLUDE_RETWEETS = false;
+const TWEETS_PER_ACCOUNT = 10;
+const INCLUDE_REPLIES = true;
+const INCLUDE_RETWEETS = true;
 const BASE_API_DELAY_MS = 180000; // Increased to 3 minutes between API calls to respect Basic tier rate limits
 const MAX_RETRY_ATTEMPTS = 3; // Maximum number of retry attempts for rate limit errors
 const BATCH_SIZE = TEST_MODE ? 1 : 3; // Use batch size of 1 for test mode, 3 for production mode
