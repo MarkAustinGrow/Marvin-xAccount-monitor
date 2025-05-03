@@ -184,6 +184,24 @@ async function getAccountsToReview() {
 // Function to update the status of an account to review
 async function updateAccountReviewStatus(id, status, notes) {
   try {
+    // First, get the handle for this account
+    const { data: account, error: getError } = await supabase
+      .from('accounts_to_review')
+      .select('handle')
+      .eq('id', id)
+      .single();
+    
+    if (getError) {
+      console.error(`Error getting handle for account review ${id}:`, getError);
+      return false;
+    }
+    
+    if (!account || !account.handle) {
+      console.error(`Account review ${id} not found or has no handle`);
+      return false;
+    }
+    
+    // Update all entries with this handle to avoid unique constraint conflicts
     const { error } = await supabase
       .from('accounts_to_review')
       .update({ 
@@ -191,13 +209,14 @@ async function updateAccountReviewStatus(id, status, notes) {
         notes,
         updated_at: new Date().toISOString() 
       })
-      .eq('id', id);
+      .eq('handle', account.handle);
     
     if (error) {
-      console.error(`Error updating status for account review ${id}:`, error);
+      console.error(`Error updating status for account review ${id} (handle: ${account.handle}):`, error);
       return false;
     }
     
+    console.log(`Successfully updated status for all entries with handle: ${account.handle}`);
     return true;
   } catch (error) {
     console.error('Error in updateAccountReviewStatus:', error);
