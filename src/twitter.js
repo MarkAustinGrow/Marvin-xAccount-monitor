@@ -125,9 +125,8 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
       return [];
     }
     
-    // Fetch tweets for the user with engagement metrics
-    // Increase max_results to get more tweets to choose from
-    const tweets = await readOnlyClient.v2.userTimeline(userId, {
+    // Build the request parameters
+    const requestParams = {
       max_results: 30, // Fetch more tweets to ensure we have enough after filtering
       'tweet.fields': [
         'created_at', 
@@ -138,9 +137,16 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
         'context_annotations', // For topic categorization
         'entities', // Hashtags, mentions, URLs
         'lang' // Language of the tweet
-      ],
-      exclude: includeReplies ? [] : ['replies'],
-    });
+      ]
+    };
+    
+    // Only add the exclude parameter if we want to exclude replies
+    if (!includeReplies) {
+      requestParams.exclude = ['replies'];
+    }
+    
+    // Fetch tweets for the user with engagement metrics
+    const tweets = await readOnlyClient.v2.userTimeline(userId, requestParams);
     
     if (!tweets || !tweets.data || tweets.data.length === 0) {
       console.log(`No tweets found for @${handle}.`);
