@@ -4,6 +4,7 @@ const db = require('./src/db');
 const twitter = require('./src/twitter');
 const logger = require('./src/logger');
 const webServer = require('./src/web-server');
+const RateLimitedFetcher = require('./scripts/rate-limited-fetcher');
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -404,28 +405,69 @@ async function monitorAccounts() {
     
     logger.info(`Found ${accounts.length} accounts to monitor.`);
     
-    // Split accounts into batches
-    const batches = [];
-    for (let i = 0; i < accounts.length; i += BATCH_SIZE) {
-      batches.push(accounts.slice(i, i + BATCH_SIZE));
+    // Use the rate-limited fetcher to process accounts
+    const fetcher = new RateLimitedFetcher({
+      maxAccountsPerBatch: BATCH_SIZE,
+      tweetsPerAccount: TWEETS_PER_ACCOUNT,
+      includeReplies: INCLUDE_REPLIES,
+      includeRetweets: INCLUDE_RETWEETS,
+      delayBetweenAccounts: BASE_API_DELAY_MS,
+      maxRetries: MAX_RETRY_ATTEMPTS,
+      logToFile: true,
+      db: db // Pass the database connection
+    });
+    
+    // Configure the fetcher's logger to use our logger
+    fetcher.log = (message, level = 'info') => {
+      switch (level) {
+        case 'warn':
+          logger.warn(message);
+          break;
+        case 'error':
+          logger.error(message);
+          break;
+        default:
+          logger.info(message);
+      }
+    };
+    
+    // Add accounts to the fetcher
+    fetcher.addAccounts(accounts);
+    
+    // Start processing
+    logger.info('Starting rate-limited tweet fetching...');
+    const startTime = Date.now();
+    
+    const results = await fetcher.start();
+    
+    const endTime = Date.now();
+    const duration = (endTime - startTime) / 1000 / 60; // in minutes
+    
+    // Log results
+    logger.info(`Completed processing in ${duration.toFixed(2)} minutes.`);
+    logger.info(`Successfully processed ${results.processed.length} accounts.`);
+    
+    if (Object.keys(results.failed).length > 0) {
+      logger.warn(`Failed to process ${Object.keys(results.failed).length} accounts.`);
+      for (const [handle, reason] of Object.entries(results.failed)) {
+        logger.warn(`- @${handle}: ${reason}`);
+      }
     }
     
-    logger.info(`Split accounts into ${batches.length} batches of up to ${BATCH_SIZE} accounts each.`);
-    
-    // Process first batch immediately
-    await processBatch(batches[0], 1, batches.length);
-    
-    // Schedule remaining batches with delays between them
-    for (let i = 1; i < batches.length; i++) {
-      const batchDelay = BATCH_INTERVAL_MINUTES * 60 * 1000 * i;
-      logger.info(`Scheduling batch ${i + 1}/${batches.length} to run in ${BATCH_INTERVAL_MINUTES * i} minutes...`);
+    // Update rate limit tracking
+    if (results.rateLimits) {
+      trackApiCall(results.rateLimits);
       
-      setTimeout(async () => {
-        await processBatch(batches[i], i + 1, batches.length);
-      }, batchDelay);
+      logger.info('Final rate limit status:');
+      logger.info(`- API calls remaining: ${results.rateLimits.remaining}/${results.rateLimits.limit}`);
+      
+      if (results.rateLimits.day) {
+        logger.info(`- Daily limit remaining: ${results.rateLimits.day.remaining}/${results.rateLimits.day.limit}`);
+        logger.info(`- Daily limit resets at: ${new Date(results.rateLimits.day.reset * 1000).toISOString()}`);
+      }
     }
     
-    logger.info('Account monitoring process initiated. Batches will run at scheduled intervals.');
+    logger.info('Account monitoring process completed.');
   } catch (error) {
     logger.error('Error in monitorAccounts:', error);
   }
