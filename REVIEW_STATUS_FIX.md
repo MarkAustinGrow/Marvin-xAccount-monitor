@@ -6,7 +6,9 @@ When clicking the "Mark as Fixed" button on the account review page, users were 
 
 ## Root Cause
 
-The issue was caused by a unique constraint on the `handle` column in the `accounts_to_review` table:
+There were two issues:
+
+1. **Unique Constraint Conflict**: A unique constraint on the `handle` column in the `accounts_to_review` table:
 
 ```sql
 ALTER TABLE accounts_to_review ADD CONSTRAINT unique_handle UNIQUE (handle);
@@ -15,6 +17,12 @@ ALTER TABLE accounts_to_review ADD CONSTRAINT unique_handle UNIQUE (handle);
 This constraint ensures that each Twitter handle can only appear once in the review list. However, before this constraint was added, some accounts had multiple entries in the table with the same handle but different IDs.
 
 When a user tried to update the status of one of these accounts, the system was only updating the record with the specific ID, but not other records with the same handle. This caused conflicts with the unique constraint when the system later tried to add a new entry for the same handle.
+
+2. **Missing Column**: The code was trying to update an `updated_at` column that doesn't exist in the `accounts_to_review` table, resulting in the error:
+
+```
+Could not find the 'updated_at' column of 'accounts_to_review' in the schema cache
+```
 
 ## Solution
 
@@ -48,8 +56,8 @@ async function updateAccountReviewStatus(id, status, notes) {
       .from('accounts_to_review')
       .update({ 
         status, 
-        notes,
-        updated_at: new Date().toISOString() 
+        notes
+        // Removed updated_at field since the column doesn't exist in the table
       })
       .eq('handle', account.handle);
     

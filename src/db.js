@@ -206,8 +206,8 @@ async function updateAccountReviewStatus(id, status, notes) {
       .from('accounts_to_review')
       .update({ 
         status, 
-        notes,
-        updated_at: new Date().toISOString() 
+        notes
+        // Removed updated_at field since the column doesn't exist in the table
       })
       .eq('handle', account.handle);
     
