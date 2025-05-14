@@ -113,7 +113,7 @@ async function getUserId(handle, db) {
 }
 
 // Function to fetch recent tweets for a user
-async function fetchRecentTweets(handle, count = 3, includeReplies = false, includeRetweets = false, db = null) {
+async function fetchRecentTweets(handle, count = 3, includeReplies = false, includeRetweets = false, db = null, since_date = null) {
   let rateLimitInfo = null;
   try {
     console.log(`Fetching recent tweets for @${handle}...`);
@@ -143,6 +143,14 @@ async function fetchRecentTweets(handle, count = 3, includeReplies = false, incl
     // Only add the exclude parameter if we want to exclude replies
     if (!includeReplies) {
       requestParams.exclude = ['replies'];
+    }
+    
+    // Add start_time parameter if we have a since_date
+    if (since_date) {
+      // Add a small buffer (1 second) to avoid missing any tweets
+      const startTime = new Date(new Date(since_date).getTime() - 1000);
+      requestParams.start_time = startTime.toISOString();
+      console.log(`Fetching tweets for @${handle} since ${startTime.toISOString()}`);
     }
     
     // Fetch tweets for the user with engagement metrics

@@ -97,6 +97,21 @@ async function processAccount(account, retryCount = 0) {
   try {
     logger.info(`Processing account: @${account.handle}`);
     
+    // Get existing cached tweets for this account to find the most recent tweet date
+    const cachedTweets = await db.getCachedTweets(account.id);
+    
+    // Find the most recent tweet date if we have cached tweets
+    let mostRecentTweetDate = null;
+    if (cachedTweets.length > 0) {
+      // Find the most recent tweet by created_at date
+      mostRecentTweetDate = cachedTweets.reduce((latest, tweet) => {
+        const tweetDate = new Date(tweet.created_at);
+        return tweetDate > latest ? tweetDate : latest;
+      }, new Date(0)).toISOString();
+      
+      logger.info(`Most recent tweet for @${account.handle} is from ${mostRecentTweetDate}`);
+    }
+    
     // Fetch recent tweets for the account with retry handling
     logger.info(`Fetching tweets for @${account.handle} with retry handling...`);
     
@@ -114,7 +129,8 @@ async function processAccount(account, retryCount = 0) {
           TWEETS_PER_ACCOUNT,
           INCLUDE_REPLIES,
           INCLUDE_RETWEETS,
-          db
+          db,
+          mostRecentTweetDate
         );
         
         // Update rate limit info if available in the response
@@ -198,23 +214,29 @@ async function processAccount(account, retryCount = 0) {
       return;
     }
     
-    // Get existing cached tweets for this account
-    const cachedTweets = await db.getCachedTweets(account.id);
+    // If we're using since_date and we got tweets, they're all new
+    // If we're not using since_date or didn't get tweets, we need to check if anything changed
+    let tweetsChanged = tweets.length > 0;
     
-    // Check if tweets have changed
-    let tweetsChanged = true;
-    
-    if (cachedTweets.length === tweets.length) {
-      // Compare tweet IDs to see if they're the same
-      const cachedIds = new Set(cachedTweets.map(t => t.tweet_id));
-      const newIds = new Set(tweets.map(t => t.tweet_id));
+    // If we have tweets and we're not using since_date, we need to check if they've changed
+    if (tweets.length > 0 && !mostRecentTweetDate) {
+      // Get existing cached tweets for this account if we haven't already
+      if (cachedTweets.length === 0) {
+        cachedTweets = await db.getCachedTweets(account.id);
+      }
       
-      // Check if all new tweet IDs are already in the cache
-      tweetsChanged = false;
-      for (const id of newIds) {
-        if (!cachedIds.has(id)) {
-          tweetsChanged = true;
-          break;
+      if (cachedTweets.length === tweets.length) {
+        // Compare tweet IDs to see if they're the same
+        const cachedIds = new Set(cachedTweets.map(t => t.tweet_id));
+        const newIds = new Set(tweets.map(t => t.tweet_id));
+        
+        // Check if all new tweet IDs are already in the cache
+        tweetsChanged = false;
+        for (const id of newIds) {
+          if (!cachedIds.has(id)) {
+            tweetsChanged = true;
+            break;
+          }
         }
       }
     }
