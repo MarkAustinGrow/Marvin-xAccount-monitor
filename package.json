@@ -16,6 +16,7 @@
     "test-parse": "node scripts/test-parse-accounts.js",
     "test-db": "node scripts/test-db-connection.js",
     "test-twitter": "node scripts/test-twitter-api.js",
+    "test-fetch-optimization": "node scripts/test-tweet-fetch-optimization.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

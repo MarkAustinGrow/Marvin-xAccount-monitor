@@ -27,18 +27,25 @@
 ## Advanced Features
 
 ### Rate Limit Management
-- **Intelligent Batch Processing**: Processes accounts in small batches (2 accounts per batch)
-- **Adaptive Delays**: Calculates optimal delays between API calls based on batch size
-- **Exponential Backoff**: Implements exponential backoff when rate limits are hit
-- **Rate Limit Awareness**: Tracks Twitter API rate limit information from responses
+- **Advanced Queue System**: Implements a sophisticated queue system for account processing with configurable batch sizes
+- **Adaptive Delays**: Calculates optimal delays between API calls based on batch size and rate limits
+- **Proactive Rate Limit Monitoring**: Checks rate limits before processing to avoid unnecessary API calls
+- **Automatic Pausing**: Automatically pauses processing when approaching rate limits and resumes after reset
+- **Smart Retry Logic**: Implements intelligent retry with exponential backoff when rate limits are hit
+- **Rate Limit Tracking**: Monitors and respects Twitter API rate limits in real-time with detailed logging
 - **User ID Caching**: Caches user IDs to reduce API calls by approximately 50%
-- **Batch Interval Optimization**: 16-minute intervals between batches (aligned with Twitter's 15-minute reset cycle)
+- **Incremental Tweet Fetching**: Only fetches tweets newer than the most recent cached tweet, significantly reducing API calls
+- **Batch Interval Optimization**: Configurable intervals between batches to align with Twitter's rate limit reset cycles
+- **Basic Tier Compatibility**: Optimized for Twitter's Basic tier rate limits (5 requests per 15 minutes)
 
 ### Account Review System
 - **Validation Error Detection**: Automatically detects accounts with validation issues (e.g., usernames exceeding Twitter's 15-character limit)
 - **Zero-Tweet Detection**: Identifies accounts that consistently return zero tweets despite successful API calls
 - **Review Database**: Stores problematic accounts in a dedicated review table
 - **Status Tracking**: Tracks review status (pending, fixed, ignored) for each account
+- **Duplicate Entry Handling**: Intelligently manages duplicate entries for the same handle to maintain data integrity
+- **Unique Constraint Management**: Handles unique constraints on the handle column to prevent conflicts
+- **Bulk Status Updates**: Updates all entries for the same handle simultaneously to ensure consistency
 - **Notes System**: Allows adding notes to accounts for team communication
 
 ### Web Interface
@@ -66,22 +73,36 @@
 
 ### Deployment Tools
 - **Deployment Scripts**: Scripts for easy deployment to remote servers
-- **Documentation**: Comprehensive deployment documentation
+- **Feature-Specific Deployment**: Specialized scripts for deploying specific feature updates:
+  - **Rate Limit Management**: Scripts for deploying rate limit optimization changes
+  - **Review System Fixes**: Scripts for deploying fixes to the account review system
+  - **Twitter API Updates**: Scripts for deploying Twitter API integration changes
+  - **Tweet Fetch Optimization**: Scripts for deploying the incremental tweet fetching feature
+- **GitHub Integration**: Scripts for pushing changes to GitHub repositories
+- **Documentation**: Comprehensive deployment and feature documentation
 - **Environment Examples**: Example configuration files
 
 ### Monitoring & Logging
 - **Comprehensive Logging**: Detailed logging of all operations
 - **Log Levels**: Multiple log levels (DEBUG, INFO, WARN, ERROR)
-- **Rate Limit Tracking**: Specific logging for rate limit events
+- **Enhanced Rate Limit Tracking**: Detailed logging of rate limit information, including remaining limits and reset times
+- **Queue Status Logging**: Logs queue size and processing status
+- **Batch Processing Logs**: Detailed logs of batch processing operations
+- **Account Processing Metrics**: Logs processing time and results for each account
 - **Account Scan Reporting**: Reports on the success/failure of each account scan
 - **Heartbeat Monitoring**: Regular heartbeat logs to confirm system activity
+- **Error Diagnostics**: Detailed error logging with context for troubleshooting
 
 ### Testing & Development
 - **Test Mode**: Special test mode for development and debugging
 - **Single Account Testing**: Ability to test with a single account
+- **Rate-Limited Fetcher Testing**: Dedicated tools to test the rate-limited fetcher
+- **Twitter API Manager Testing**: Tools to test the Twitter API manager component
 - **Database Connection Testing**: Tools to verify database connectivity
 - **API Testing**: Utilities to test Twitter API connectivity
 - **Account Parsing Testing**: Test account parsing without database insertion
+- **Specific Account Testing**: Test tools for specific accounts (e.g., BBC News)
+- **Integration Testing**: Tools to test integration between components
 
 ## Configuration Options
 
@@ -94,6 +115,10 @@
 - `BATCH_SIZE`: Number of accounts to process in each batch
 - `BATCH_INTERVAL_MINUTES`: Time between processing batches
 - `CRON_SCHEDULE`: Schedule for the monitoring job
+- `ACCOUNT_DELAY_SECONDS`: Delay between processing individual accounts
+- `RATE_LIMIT_BUFFER`: Buffer to maintain below Twitter's rate limits
+- `INITIAL_FETCH_SIZE`: Number of tweets to fetch in the initial API call
+- `TWEETS_TO_STORE`: Number of tweets to store in the database
 
 ### Web Interface Configuration
 - `WEB_PORT`: Port for the web interface

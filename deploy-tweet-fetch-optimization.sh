@@ -13,6 +13,9 @@ LOCAL_FILES=(
   "src/twitter.js"
   "index.js"
   "scripts/rate-limited-fetcher.js"
+  "scripts/test-tweet-fetch-optimization.js"
+  "TWEET_FETCH_OPTIMIZATION.md"
+  "package.json"
 )
 
 # Copy files to remote server
