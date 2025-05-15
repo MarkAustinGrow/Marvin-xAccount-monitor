@@ -570,41 +570,53 @@ async function trackApiUsage(callsMade = 1, dailyLimit = 500, resetTime = null) 
       return false;
     }
     
+    // Make sure we're using the correct daily limit from the constant in index.js
+    const DAILY_API_LIMIT = 400; // Hard-coded to match index.js
+    
     if (existingData) {
       // Update existing entry
       const { error: updateError } = await supabase
         .from('api_usage_stats')
         .update({ 
           calls_made: existingData.calls_made + callsMade,
-          daily_limit: dailyLimit,
+          daily_limit: DAILY_API_LIMIT, // Always use the correct limit
           reset_time: resetTime ? new Date(resetTime).toISOString() : null
         })
         .eq('id', existingData.id);
       
       if (updateError) {
         console.error('Error updating API usage stats:', updateError);
+        console.error('Failed to update record with ID:', existingData.id);
+        console.error('Attempted to set calls_made to:', existingData.calls_made + callsMade);
         return false;
       }
+      
+      console.log(`API usage tracked: ${existingData.calls_made + callsMade}/${DAILY_API_LIMIT} calls made today`);
     } else {
       // Create new entry
-      const { error: insertError } = await supabase
+      const { data: insertData, error: insertError } = await supabase
         .from('api_usage_stats')
         .insert({
           date: today,
           calls_made: callsMade,
-          daily_limit: dailyLimit,
+          daily_limit: DAILY_API_LIMIT, // Always use the correct limit
           reset_time: resetTime ? new Date(resetTime).toISOString() : null
-        });
+        })
+        .select();
       
       if (insertError) {
         console.error('Error inserting API usage stats:', insertError);
+        console.error('Failed to insert new record for date:', today);
         return false;
       }
+      
+      console.log(`API usage tracking initialized: ${callsMade}/${DAILY_API_LIMIT} calls made today`);
     }
     
     return true;
   } catch (error) {
     console.error('Error in trackApiUsage:', error);
+    console.error('Stack trace:', error.stack);
     return false;
   }
 }
@@ -625,9 +637,53 @@ async function getTodayApiUsage() {
       return null;
     }
     
-    return data || { date: today, calls_made: 0, daily_limit: 500, reset_time: null };
+    // If no data in database, check if we have rate limit info from Twitter
+    if (!data) {
+      try {
+        const rateLimitInfo = await checkTwitterRateLimits();
+        if (rateLimitInfo && rateLimitInfo.day) {
+          const DAILY_API_LIMIT = 400; // Hard-coded to match index.js
+          const callsMade = rateLimitInfo.day.limit - rateLimitInfo.day.remaining;
+          
+          console.log(`No database record found. Using Twitter API rate limit info: ${callsMade}/${DAILY_API_LIMIT} calls made today`);
+          
+          // Create a record in the database with this information
+          await trackApiUsage(callsMade, DAILY_API_LIMIT, rateLimitInfo.day.reset * 1000);
+          
+          return {
+            date: today,
+            calls_made: callsMade,
+            daily_limit: DAILY_API_LIMIT,
+            reset_time: new Date(rateLimitInfo.day.reset * 1000).toISOString()
+          };
+        }
+      } catch (rateLimitError) {
+        console.error('Error checking Twitter rate limits:', rateLimitError);
+      }
+    }
+    
+    const DAILY_API_LIMIT = 400; // Hard-coded to match index.js
+    return data || { date: today, calls_made: 0, daily_limit: DAILY_API_LIMIT, reset_time: null };
   } catch (error) {
     console.error('Error in getTodayApiUsage:', error);
+    console.error('Stack trace:', error.stack);
+    return null;
+  }
+}
+
+// Function to check Twitter's rate limits directly
+async function checkTwitterRateLimits() {
+  try {
+    const twitter = require('./twitter');
+    const result = await twitter.checkRateLimits();
+    
+    if (result.success && result.rateLimitInfo) {
+      return result.rateLimitInfo;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error checking Twitter rate limits:', error);
     return null;
   }
 }
@@ -638,13 +694,21 @@ async function isApproachingApiLimit(safetyThreshold = 0.8) {
     const usage = await getTodayApiUsage();
     
     if (!usage) {
-      return false; // Assume we're not approaching the limit if we can't get the usage
+      console.warn('Could not determine API usage. Assuming we are approaching the limit as a safety measure.');
+      return true; // Assume we ARE approaching the limit if we can't get the usage (safer)
     }
     
-    return usage.calls_made >= (usage.daily_limit * safetyThreshold);
+    const isApproaching = usage.calls_made >= (usage.daily_limit * safetyThreshold);
+    
+    if (isApproaching) {
+      console.warn(`Approaching API limit: ${usage.calls_made}/${usage.daily_limit} calls made (${Math.round(usage.calls_made / usage.daily_limit * 100)}%)`);
+    }
+    
+    return isApproaching;
   } catch (error) {
     console.error('Error in isApproachingApiLimit:', error);
-    return false;
+    console.error('Stack trace:', error.stack);
+    return true; // Assume we ARE approaching the limit if there's an error (safer)
   }
 }
 

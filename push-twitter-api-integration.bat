@@ -1,4 +1,4 @@
-@echo off
+ith manually push@echo off
 REM Script to push the Twitter API integration to GitHub
 REM This script will:
 REM 1. Add the modified and new files to git

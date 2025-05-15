@@ -42,7 +42,11 @@ async function trackApiCall(rateLimitInfo) {
     }
     
     // Track the API call in the database
-    await db.trackApiUsage(callsMade, dailyLimit, resetTime);
+    const trackingSuccess = await db.trackApiUsage(callsMade, dailyLimit, resetTime);
+    
+    if (!trackingSuccess) {
+      logger.warn('Failed to track API call in database. This may affect rate limit enforcement.');
+    }
     
     // Get updated usage
     const usage = await db.getTodayApiUsage();
@@ -60,9 +64,15 @@ async function trackApiCall(rateLimitInfo) {
           rateLimitInfo.day.reset * 1000
         );
       }
+      
+      // Check if we're approaching the limit and log a warning
+      if (usage.calls_made >= (usage.daily_limit * API_LIMIT_SAFETY_THRESHOLD)) {
+        logger.warn(`APPROACHING DAILY API LIMIT: ${usage.calls_made}/${usage.daily_limit} calls made (${usagePercentage}%)`);
+      }
     }
   } catch (error) {
     logger.error('Error tracking API call:', error);
+    logger.error('Stack trace:', error.stack);
   }
 }
 

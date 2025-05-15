@@ -123,6 +123,27 @@ class RateLimitedFetcher {
     for (let i = 0; i < batch.length; i++) {
       const account = batch[i];
       
+      // Check if we're approaching API limits before processing each account
+      if (this.db) {
+        try {
+          const isApproachingLimit = await this.db.isApproachingApiLimit(0.8); // Use 80% threshold
+          if (isApproachingLimit) {
+            const usage = await this.db.getTodayApiUsage();
+            this.log(`Skipping account @${account.handle} - approaching daily API limit (${usage.calls_made}/${usage.daily_limit})`, 'warn');
+            
+            // Mark as failed due to rate limit
+            this.failedAccounts.set(account.handle, 'Skipped due to approaching daily API limit');
+            
+            // Skip the rest of the batch
+            this.log('Skipping remaining accounts in batch due to API limit concerns', 'warn');
+            break;
+          }
+        } catch (limitCheckError) {
+          this.log(`Error checking API limits: ${limitCheckError.message}`, 'error');
+          // Continue processing but log the error
+        }
+      }
+      
       try {
         await this.processAccount(account);
         
@@ -147,6 +168,19 @@ class RateLimitedFetcher {
             
             this.log(`Rate limit resets at ${new Date(resetTime).toISOString()}`);
             this.log(`Waiting ${Math.round(waitTime / 1000)} seconds before continuing`);
+            
+            // Track this rate limit in the database
+            if (this.db) {
+              try {
+                await this.db.trackApiUsage(
+                  1, // Count this as 1 call
+                  error.rateLimit.day ? error.rateLimit.day.limit : 500,
+                  error.rateLimit.reset * 1000
+                );
+              } catch (trackError) {
+                this.log(`Failed to track rate limit in database: ${trackError.message}`, 'error');
+              }
+            }
           }
           
           // Wait for rate limit to reset

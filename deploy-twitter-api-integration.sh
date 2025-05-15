@@ -1,4 +1,4 @@
-#!/bin/bash
+m#!/bin/bash
 
 # Script to deploy the Twitter API integration on the Linode server
 # This script will:
