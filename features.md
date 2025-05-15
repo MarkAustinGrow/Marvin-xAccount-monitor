@@ -53,6 +53,7 @@
 - **Unique Constraint Management**: Handles unique constraints on the handle column to prevent conflicts
 - **Bulk Status Updates**: Updates all entries for the same handle simultaneously to ensure consistency
 - **Notes System**: Allows adding notes to accounts for team communication
+- **Review List Filtering**: Prevents monitoring accounts that are in the review list with "pending" status, reducing API calls and preventing repeated errors
 
 ### Web Interface
 - **Account Review Dashboard**: Web-based interface for reviewing problematic accounts
