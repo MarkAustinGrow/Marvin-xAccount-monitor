@@ -21,75 +21,67 @@ const BATCH_SIZE = TEST_MODE ? 1 : 3; // Use batch size of 1 for test mode, 3 fo
 const BATCH_INTERVAL_MINUTES = TEST_MODE ? 5 : 20; // Shorter interval in test mode, 20 minutes in production
 const CRON_SCHEDULE = TEST_MODE ? '*/30 * * * *' : '0 */12 * * *'; // Every 30 minutes in test mode, every 12 hours in production
 const DAILY_API_LIMIT = 400; // Set to 80% of the 500/day app limit for Basic tier
+const API_LIMIT_SAFETY_THRESHOLD = 0.8; // Stop processing when we reach 80% of the daily limit
 
-// Rate limit tracking
-let apiCallsToday = 0;
-let rateLimitResetTime = null;
-let dailyLimitResetTime = null;
-
-// Function to check if we're approaching API limits
-function isApproachingRateLimit() {
-  return apiCallsToday >= DAILY_API_LIMIT;
-}
-
-// Function to reset API call counter
-function resetApiCallCounter() {
-  apiCallsToday = 0;
-  dailyLimitResetTime = null;
-  logger.info('Daily API call counter has been reset');
-}
-
-// Function to track API calls
-function trackApiCall(rateLimitInfo) {
-  apiCallsToday++;
-  
-  // Update rate limit reset times if available
-  if (rateLimitInfo && rateLimitInfo.reset) {
-    rateLimitResetTime = new Date(rateLimitInfo.reset * 1000);
-  }
-  
-  if (rateLimitInfo && rateLimitInfo.day && rateLimitInfo.day.reset) {
-    dailyLimitResetTime = new Date(rateLimitInfo.day.reset * 1000);
+// Function to track API calls with persistent storage
+async function trackApiCall(rateLimitInfo) {
+  try {
+    // Default values
+    let callsMade = 1;
+    let dailyLimit = DAILY_API_LIMIT;
+    let resetTime = null;
     
-    // Schedule reset of counter when daily limit resets
-    const now = new Date();
-    const msUntilReset = dailyLimitResetTime.getTime() - now.getTime();
-    
-    if (msUntilReset > 0) {
-      setTimeout(resetApiCallCounter, msUntilReset + 60000); // Add 1 minute buffer
+    // Update values if rate limit info is available
+    if (rateLimitInfo) {
+      if (rateLimitInfo.day) {
+        dailyLimit = rateLimitInfo.day.limit;
+        resetTime = rateLimitInfo.day.reset * 1000; // Convert to milliseconds
+      } else if (rateLimitInfo.reset) {
+        resetTime = rateLimitInfo.reset * 1000; // Convert to milliseconds
+      }
     }
-  }
-  
-  logger.debug(`API call tracked. Total today: ${apiCallsToday}/${DAILY_API_LIMIT}`);
-  
-  // Log API usage status
-  const usagePercentage = Math.round((apiCallsToday / DAILY_API_LIMIT) * 100);
-  logger.apiCallTracking(apiCallsToday, DAILY_API_LIMIT, usagePercentage);
-  
-  // Log detailed daily limit info if available
-  if (rateLimitInfo && rateLimitInfo.day) {
-    logger.dailyRateLimitStatus(
-      rateLimitInfo.day.remaining,
-      rateLimitInfo.day.limit,
-      rateLimitInfo.day.reset * 1000
-    );
+    
+    // Track the API call in the database
+    await db.trackApiUsage(callsMade, dailyLimit, resetTime);
+    
+    // Get updated usage
+    const usage = await db.getTodayApiUsage();
+    
+    if (usage) {
+      // Log API usage status
+      const usagePercentage = Math.round((usage.calls_made / usage.daily_limit) * 100);
+      logger.apiCallTracking(usage.calls_made, usage.daily_limit, usagePercentage);
+      
+      // Log detailed daily limit info if available
+      if (rateLimitInfo && rateLimitInfo.day) {
+        logger.dailyRateLimitStatus(
+          rateLimitInfo.day.remaining,
+          rateLimitInfo.day.limit,
+          rateLimitInfo.day.reset * 1000
+        );
+      }
+    }
+  } catch (error) {
+    logger.error('Error tracking API call:', error);
   }
 }
 
 // Function to process a single account
 async function processAccount(account, retryCount = 0) {
   // Check if we're approaching rate limits before processing
-  if (isApproachingRateLimit()) {
-    logger.warn(`Skipping account @${account.handle} - approaching daily API limit (${apiCallsToday}/${DAILY_API_LIMIT})`);
+  const isApproachingLimit = await db.isApproachingApiLimit(API_LIMIT_SAFETY_THRESHOLD);
+  if (isApproachingLimit) {
+    const usage = await db.getTodayApiUsage();
+    logger.warn(`Skipping account @${account.handle} - approaching daily API limit (${usage.calls_made}/${usage.daily_limit})`);
     
     // Log with more detailed formatting
-    const usagePercentage = Math.round((apiCallsToday / DAILY_API_LIMIT) * 100);
-    logger.apiCallTracking(apiCallsToday, DAILY_API_LIMIT, usagePercentage);
+    const usagePercentage = Math.round((usage.calls_made / usage.daily_limit) * 100);
+    logger.apiCallTracking(usage.calls_made, usage.daily_limit, usagePercentage);
     
-    if (dailyLimitResetTime) {
-      const resetTimeStr = dailyLimitResetTime.toISOString();
+    if (usage.reset_time) {
+      const resetTimeStr = new Date(usage.reset_time).toISOString();
       const now = new Date();
-      const hoursUntilReset = Math.round((dailyLimitResetTime - now) / (1000 * 60 * 60) * 10) / 10;
+      const hoursUntilReset = Math.round((new Date(usage.reset_time) - now) / (1000 * 60 * 60) * 10) / 10;
       logger.warn(`Daily limit resets at: ${resetTimeStr} (in approximately ${hoursUntilReset} hours)`);
     }
     return;
@@ -121,22 +113,22 @@ async function processAccount(account, retryCount = 0) {
     
     while (retryAttempt < MAX_RETRIES) {
       try {
-        // Track this API call
-        trackApiCall();
-        
-        tweets = await twitter.fetchRecentTweets(
-          account.handle, 
-          TWEETS_PER_ACCOUNT,
-          INCLUDE_REPLIES,
-          INCLUDE_RETWEETS,
-          db,
-          mostRecentTweetDate
-        );
-        
-        // Update rate limit info if available in the response
-        if (tweets && tweets.rateLimit) {
-          trackApiCall(tweets.rateLimit);
-        }
+    // Track this API call
+    await trackApiCall();
+    
+    tweets = await twitter.fetchRecentTweets(
+      account.handle, 
+      TWEETS_PER_ACCOUNT,
+      INCLUDE_REPLIES,
+      INCLUDE_RETWEETS,
+      db,
+      mostRecentTweetDate
+    );
+    
+    // Update rate limit info if available in the response
+    if (tweets && tweets.rateLimit) {
+      await trackApiCall(tweets.rateLimit);
+    }
         
         // If we got tweets, break out of the retry loop
         if (tweets && tweets.length > 0) {
@@ -260,7 +252,22 @@ async function processAccount(account, retryCount = 0) {
       logger.info(`No changes in tweets for @${account.handle}`);
     }
     
-    // Update last_checked timestamp
+    // If we have tweets, update the last tweet date
+    if (tweets && tweets.length > 0) {
+      // Find the most recent tweet
+      const mostRecentTweet = tweets.reduce((latest, tweet) => {
+        const tweetDate = new Date(tweet.created_at);
+        return tweetDate > latest ? tweetDate : latest;
+      }, new Date(0));
+      
+      // Update the last tweet date
+      await db.updateLastTweetDate(account.id, mostRecentTweet.toISOString());
+    }
+    
+    // Calculate and update activity level based on tweet frequency
+    await db.updateActivityLevel(account.id);
+    
+    // Update last_checked timestamp and set next_check_date based on activity level
     await db.updateLastChecked(account.id);
     logger.accountScan(account.handle, true, tweets.length);
   } catch (error) {
@@ -276,7 +283,7 @@ async function processAccount(account, retryCount = 0) {
         waitTime = Math.max(resetTime - now + 60000, 60000); // Wait until reset + 60 seconds, or at least 1 minute
         
         // Track this rate limit hit
-        trackApiCall(error.rateLimit);
+        await trackApiCall(error.rateLimit);
         
         // Log detailed rate limit information
         logger.rateLimitHit('Twitter API', new Date(resetTime).toISOString());
@@ -317,17 +324,19 @@ function calculateAdaptiveDelay(batchSize) {
 // Function to process a batch of accounts
 async function processBatch(accounts, batchNumber, totalBatches) {
   // Check if we're approaching rate limits before processing batch
-  if (isApproachingRateLimit()) {
-    logger.warn(`Skipping batch ${batchNumber}/${totalBatches} - approaching daily API limit (${apiCallsToday}/${DAILY_API_LIMIT})`);
+  const isApproachingLimit = await db.isApproachingApiLimit(API_LIMIT_SAFETY_THRESHOLD);
+  if (isApproachingLimit) {
+    const usage = await db.getTodayApiUsage();
+    logger.warn(`Skipping batch ${batchNumber}/${totalBatches} - approaching daily API limit (${usage.calls_made}/${usage.daily_limit})`);
     
     // Log with more detailed formatting
-    const usagePercentage = Math.round((apiCallsToday / DAILY_API_LIMIT) * 100);
-    logger.apiCallTracking(apiCallsToday, DAILY_API_LIMIT, usagePercentage);
+    const usagePercentage = Math.round((usage.calls_made / usage.daily_limit) * 100);
+    logger.apiCallTracking(usage.calls_made, usage.daily_limit, usagePercentage);
     
-    if (dailyLimitResetTime) {
-      const resetTimeStr = dailyLimitResetTime.toISOString();
+    if (usage.reset_time) {
+      const resetTimeStr = new Date(usage.reset_time).toISOString();
       const now = new Date();
-      const hoursUntilReset = Math.round((dailyLimitResetTime - now) / (1000 * 60 * 60) * 10) / 10;
+      const hoursUntilReset = Math.round((new Date(usage.reset_time) - now) / (1000 * 60 * 60) * 10) / 10;
       logger.warn(`Daily limit resets at: ${resetTimeStr} (in approximately ${hoursUntilReset} hours)`);
     }
     return;
@@ -402,11 +411,6 @@ async function runTestMode() {
 
 // Main monitoring function
 async function monitorAccounts() {
-  // Reset API call counter if it's a new day
-  const now = new Date();
-  if (dailyLimitResetTime && now > dailyLimitResetTime) {
-    resetApiCallCounter();
-  }
   try {
     logger.heartbeat();
     logger.info('Starting account monitoring process...');
@@ -417,15 +421,15 @@ async function monitorAccounts() {
       return;
     }
     
-    // Get all accounts to monitor
+    // Get accounts that are due for checking based on their activity level and next_check_date
     const accounts = await db.getAccountsToMonitor();
     
     if (!accounts || accounts.length === 0) {
-      logger.warn('No accounts found to monitor.');
+      logger.warn('No accounts due for monitoring at this time.');
       return;
     }
     
-    logger.info(`Found ${accounts.length} accounts to monitor.`);
+    logger.info(`Found ${accounts.length} accounts due for monitoring.`);
     
     // Use the rate-limited fetcher to process accounts
     const fetcher = new RateLimitedFetcher({
@@ -478,7 +482,7 @@ async function monitorAccounts() {
     
     // Update rate limit tracking
     if (results.rateLimits) {
-      trackApiCall(results.rateLimits);
+      await trackApiCall(results.rateLimits);
       
       logger.info('Final rate limit status:');
       logger.info(`- API calls remaining: ${results.rateLimits.remaining}/${results.rateLimits.limit}`);

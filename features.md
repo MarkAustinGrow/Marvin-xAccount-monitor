@@ -37,6 +37,12 @@
 - **Incremental Tweet Fetching**: Only fetches tweets newer than the most recent cached tweet, significantly reducing API calls
 - **Batch Interval Optimization**: Configurable intervals between batches to align with Twitter's rate limit reset cycles
 - **Basic Tier Compatibility**: Optimized for Twitter's Basic tier rate limits (5 requests per 15 minutes)
+- **Adaptive Monitoring**: Adjusts monitoring frequency based on account activity levels:
+  - **Activity Classification**: Categorizes accounts as high, medium, or low activity based on tweet frequency
+  - **Dynamic Scheduling**: Checks high activity accounts daily, medium accounts every 3 days, and low activity accounts weekly
+  - **API Usage Tracking**: Tracks API usage in a dedicated database table to prevent hitting rate limits
+  - **Circuit Breaker Pattern**: Automatically pauses processing when approaching daily API limits
+  - **Selective Processing**: Only processes accounts that are due for checking based on their activity level
 
 ### Account Review System
 - **Validation Error Detection**: Automatically detects accounts with validation issues (e.g., usernames exceeding Twitter's 15-character limit)
@@ -78,6 +84,7 @@
   - **Review System Fixes**: Scripts for deploying fixes to the account review system
   - **Twitter API Updates**: Scripts for deploying Twitter API integration changes
   - **Tweet Fetch Optimization**: Scripts for deploying the incremental tweet fetching feature
+  - **Adaptive Monitoring**: Scripts for deploying the adaptive monitoring system
 - **GitHub Integration**: Scripts for pushing changes to GitHub repositories
 - **Documentation**: Comprehensive deployment and feature documentation
 - **Environment Examples**: Example configuration files
@@ -119,6 +126,7 @@
 - `RATE_LIMIT_BUFFER`: Buffer to maintain below Twitter's rate limits
 - `INITIAL_FETCH_SIZE`: Number of tweets to fetch in the initial API call
 - `TWEETS_TO_STORE`: Number of tweets to store in the database
+- `API_LIMIT_SAFETY_THRESHOLD`: Threshold for pausing processing when approaching API limits (default: 0.8 or 80%)
 
 ### Web Interface Configuration
 - `WEB_PORT`: Port for the web interface

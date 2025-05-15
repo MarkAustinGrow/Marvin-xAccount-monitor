@@ -25,13 +25,16 @@ async function initializeDatabase() {
 // Function to get all accounts to monitor
 async function getAccountsToMonitor() {
   try {
-    // Order by last_checked first (oldest first), then by priority
-    // This ensures all accounts eventually get processed, not just the high priority ones
+    const now = new Date().toISOString();
+    
+    // Get accounts that are due for checking (next_check_date is null or in the past)
+    // Order by next_check_date first (oldest first), then by priority
     const { data, error } = await supabase
       .from('x_accounts')
       .select('*')
-      .order('last_checked', { ascending: true }) // Process accounts that haven't been checked for the longest time first
-      .order('priority', { ascending: true });    // Then consider priority as a secondary factor
+      .or(`next_check_date.is.null,next_check_date.lt.${now}`) // Only get accounts that are due for checking
+      .order('next_check_date', { ascending: true }) // Process accounts that are most overdue first
+      .order('priority', { ascending: true });       // Then consider priority as a secondary factor
     
     if (error) {
       console.error('Error fetching accounts:', error);
@@ -45,12 +48,70 @@ async function getAccountsToMonitor() {
   }
 }
 
-// Function to update the last_checked timestamp for an account
+// Function to get all accounts regardless of next_check_date
+async function getAllAccounts() {
+  try {
+    const { data, error } = await supabase
+      .from('x_accounts')
+      .select('*')
+      .order('handle', { ascending: true });
+    
+    if (error) {
+      console.error('Error fetching all accounts:', error);
+      return [];
+    }
+    
+    return data || [];
+  } catch (error) {
+    console.error('Error in getAllAccounts:', error);
+    return [];
+  }
+}
+
+// Function to update the last_checked timestamp and set next_check_date based on activity level
 async function updateLastChecked(accountId) {
   try {
+    // First, get the account to determine its activity level
+    const { data: account, error: getError } = await supabase
+      .from('x_accounts')
+      .select('activity_level')
+      .eq('id', accountId)
+      .single();
+    
+    if (getError) {
+      console.error(`Error getting activity level for account ${accountId}:`, getError);
+      return false;
+    }
+    
+    // Calculate next check date based on activity level
+    const now = new Date();
+    let nextCheckDate = new Date(now);
+    
+    switch (account.activity_level) {
+      case 'high':
+        // Check high activity accounts daily
+        nextCheckDate.setDate(now.getDate() + 1);
+        break;
+      case 'medium':
+        // Check medium activity accounts every 3 days
+        nextCheckDate.setDate(now.getDate() + 3);
+        break;
+      case 'low':
+        // Check low activity accounts weekly
+        nextCheckDate.setDate(now.getDate() + 7);
+        break;
+      default:
+        // Default to medium (3 days)
+        nextCheckDate.setDate(now.getDate() + 3);
+    }
+    
+    // Update the account
     const { error } = await supabase
       .from('x_accounts')
-      .update({ last_checked: new Date().toISOString() })
+      .update({ 
+        last_checked: now.toISOString(),
+        next_check_date: nextCheckDate.toISOString()
+      })
       .eq('id', accountId);
     
     if (error) {
@@ -384,11 +445,200 @@ async function updateAccountPriority(id, priority) {
   }
 }
 
+// Function to update the last tweet date for an account
+async function updateLastTweetDate(accountId, tweetDate) {
+  try {
+    const { error } = await supabase
+      .from('x_accounts')
+      .update({ last_tweet_date: tweetDate })
+      .eq('id', accountId);
+    
+    if (error) {
+      console.error(`Error updating last_tweet_date for account ${accountId}:`, error);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in updateLastTweetDate:', error);
+    return false;
+  }
+}
+
+// Function to calculate and update activity level based on tweet frequency
+async function updateActivityLevel(accountId) {
+  try {
+    // Get the account's tweets
+    const { data: tweets, error: tweetsError } = await supabase
+      .from('tweets_cache')
+      .select('created_at')
+      .eq('account_id', accountId)
+      .order('created_at', { ascending: false });
+    
+    if (tweetsError) {
+      console.error(`Error getting tweets for account ${accountId}:`, tweetsError);
+      return false;
+    }
+    
+    // Default to medium if no tweets
+    let activityLevel = 'medium';
+    let tweetsPerWeek = 0;
+    
+    if (tweets && tweets.length >= 2) {
+      // Calculate tweets per week based on the date range of available tweets
+      const newestTweet = new Date(tweets[0].created_at);
+      const oldestTweet = new Date(tweets[tweets.length - 1].created_at);
+      
+      // Calculate the date range in days
+      const dateRangeInDays = (newestTweet - oldestTweet) / (1000 * 60 * 60 * 24);
+      
+      // Avoid division by zero
+      if (dateRangeInDays > 0) {
+        // Calculate tweets per week
+        tweetsPerWeek = (tweets.length / dateRangeInDays) * 7;
+        
+        // Determine activity level based on tweets per week
+        if (tweetsPerWeek >= 7) {
+          // More than 1 tweet per day on average
+          activityLevel = 'high';
+        } else if (tweetsPerWeek >= 1) {
+          // Between 1-7 tweets per week
+          activityLevel = 'medium';
+        } else {
+          // Less than 1 tweet per week
+          activityLevel = 'low';
+        }
+      }
+    }
+    
+    // Update the account
+    const { error } = await supabase
+      .from('x_accounts')
+      .update({ 
+        activity_level: activityLevel,
+        tweets_per_week: tweetsPerWeek
+      })
+      .eq('id', accountId);
+    
+    if (error) {
+      console.error(`Error updating activity level for account ${accountId}:`, error);
+      return false;
+    }
+    
+    console.log(`Updated activity level for account ${accountId} to ${activityLevel} (${tweetsPerWeek.toFixed(2)} tweets/week)`);
+    return true;
+  } catch (error) {
+    console.error('Error in updateActivityLevel:', error);
+    return false;
+  }
+}
+
+// Function to track API usage
+async function trackApiUsage(callsMade = 1, dailyLimit = 500, resetTime = null) {
+  try {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    // Check if we already have an entry for today
+    const { data: existingData, error: getError } = await supabase
+      .from('api_usage_stats')
+      .select('id, calls_made')
+      .eq('date', today)
+      .single();
+    
+    if (getError && getError.code !== 'PGRST116') { // PGRST116 is "no rows returned" error
+      console.error('Error checking API usage stats:', getError);
+      return false;
+    }
+    
+    if (existingData) {
+      // Update existing entry
+      const { error: updateError } = await supabase
+        .from('api_usage_stats')
+        .update({ 
+          calls_made: existingData.calls_made + callsMade,
+          daily_limit: dailyLimit,
+          reset_time: resetTime ? new Date(resetTime).toISOString() : null
+        })
+        .eq('id', existingData.id);
+      
+      if (updateError) {
+        console.error('Error updating API usage stats:', updateError);
+        return false;
+      }
+    } else {
+      // Create new entry
+      const { error: insertError } = await supabase
+        .from('api_usage_stats')
+        .insert({
+          date: today,
+          calls_made: callsMade,
+          daily_limit: dailyLimit,
+          reset_time: resetTime ? new Date(resetTime).toISOString() : null
+        });
+      
+      if (insertError) {
+        console.error('Error inserting API usage stats:', insertError);
+        return false;
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in trackApiUsage:', error);
+    return false;
+  }
+}
+
+// Function to get today's API usage
+async function getTodayApiUsage() {
+  try {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    const { data, error } = await supabase
+      .from('api_usage_stats')
+      .select('*')
+      .eq('date', today)
+      .single();
+    
+    if (error && error.code !== 'PGRST116') { // PGRST116 is "no rows returned" error
+      console.error('Error getting today\'s API usage:', error);
+      return null;
+    }
+    
+    return data || { date: today, calls_made: 0, daily_limit: 500, reset_time: null };
+  } catch (error) {
+    console.error('Error in getTodayApiUsage:', error);
+    return null;
+  }
+}
+
+// Function to check if we're approaching the API limit
+async function isApproachingApiLimit(safetyThreshold = 0.8) {
+  try {
+    const usage = await getTodayApiUsage();
+    
+    if (!usage) {
+      return false; // Assume we're not approaching the limit if we can't get the usage
+    }
+    
+    return usage.calls_made >= (usage.daily_limit * safetyThreshold);
+  } catch (error) {
+    console.error('Error in isApproachingApiLimit:', error);
+    return false;
+  }
+}
+
 module.exports = {
   supabase,
   initializeDatabase,
   getAccountsToMonitor,
+  getAllAccounts,
   updateLastChecked,
+  updateLastTweetDate,
+  updateActivityLevel,
+  trackApiUsage,
+  getTodayApiUsage,
+  isApproachingApiLimit,
   getCachedTweets,
   deleteCachedTweets,
   insertTweets,
