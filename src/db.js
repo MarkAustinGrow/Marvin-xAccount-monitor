@@ -27,8 +27,23 @@ async function getAccountsToMonitor() {
   try {
     const now = new Date().toISOString();
     
+    // First, get all accounts in the review list with status 'pending'
+    const { data: accountsToReview, error: reviewError } = await supabase
+      .from('accounts_to_review')
+      .select('handle')
+      .eq('status', 'pending');
+    
+    if (reviewError) {
+      console.error('Error fetching accounts to review:', reviewError);
+      return [];
+    }
+    
+    // Create a set of handles to exclude
+    const excludeHandles = new Set(accountsToReview.map(a => a.handle));
+    
     // Get accounts that are due for checking (next_check_date is null or in the past)
     // Order by next_check_date first (oldest first), then by priority
+    // Exclude accounts that are in the review list with status 'pending'
     const { data, error } = await supabase
       .from('x_accounts')
       .select('*')
@@ -41,7 +56,12 @@ async function getAccountsToMonitor() {
       return [];
     }
     
-    return data || [];
+    // Filter out accounts that are in the review list with status 'pending'
+    const filteredAccounts = data ? data.filter(account => !excludeHandles.has(account.handle)) : [];
+    
+    console.log(`Filtered out ${data ? data.length - filteredAccounts.length : 0} accounts that are in the review list with status 'pending'`);
+    
+    return filteredAccounts;
   } catch (error) {
     console.error('Error in getAccountsToMonitor:', error);
     return [];
